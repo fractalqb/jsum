@@ -67,26 +67,32 @@ type Deducer interface {
 	Example(v interface{}) Deducer
 	Nullable() bool
 	Hash(dh DedupHash) uint64
+	Copies() []Deducer
 	Equal(d Deducer) bool
-	setNullable(to bool)
+	super() *dedBase
 }
 
 type dedBase struct {
-	cfg  *Config
-	null bool
+	cfg    *Config
+	null   bool
+	orig   Deducer
+	copies []Deducer
 }
 
 func (d *dedBase) Nullable() bool { return d.null }
 
-func (d *dedBase) setNullable(to bool) { d.null = to }
+func (d *dedBase) Copies() []Deducer { return d.copies }
 
-func (d *dedBase) addHash(h *maphash.Hash, jt JsonType) {
+func (d *dedBase) startHash(jt JsonType) *maphash.Hash {
+	h := new(maphash.Hash)
+	h.SetSeed(hashSeed)
 	binary.Write(h, hashEndian, jt)
 	if d.null {
 		h.WriteByte(0)
 	} else {
 		h.WriteByte(1)
 	}
+	return h
 }
 
 func (lhs *dedBase) Equal(rhs *dedBase) bool {
@@ -143,11 +149,9 @@ func (a *Unknown) Example(v interface{}) Deducer {
 }
 
 func (a *Unknown) Hash(dh DedupHash) uint64 {
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	a.dedBase.addHash(&hash, jsonUnknown)
+	hash := a.dedBase.startHash(jsonUnknown)
 	res := hash.Sum64()
-	dh[res] = append(dh[res], a)
+	dh[res] = addNotEqual(dh[res], a)
 	return res
 }
 
@@ -158,6 +162,8 @@ func (a *Unknown) Equal(d Deducer) bool {
 	}
 	return a.dedBase.Equal(&b.dedBase)
 }
+
+func (a *Unknown) super() *dedBase { return &a.dedBase }
 
 func Deduce(cfg *Config, v interface{}) Deducer {
 	tmp := Unknown{dedBase: dedBase{cfg: cfg}}
@@ -189,12 +195,9 @@ func (a *Scalar) Example(v interface{}) Deducer {
 }
 
 func (a *Scalar) Hash(dh DedupHash) uint64 {
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	a.dedBase.addHash(&hash, a.jt)
-	binary.Write(&hash, hashEndian, a.jt)
+	hash := a.dedBase.startHash(a.jt)
 	res := hash.Sum64()
-	dh[res] = append(dh[res], a)
+	dh[res] = addNotEqual(dh[res], a)
 	return res
 }
 
@@ -206,6 +209,8 @@ func (s *Scalar) Equal(d Deducer) bool {
 	res := s.dedBase.Equal(&b.dedBase)
 	return res && s.jt == b.jt
 }
+
+func (s *Scalar) super() *dedBase { return &s.dedBase }
 
 type Array struct {
 	dedBase
@@ -257,15 +262,13 @@ func (a *Array) Example(v interface{}) Deducer {
 }
 
 func (a *Array) Hash(dh DedupHash) uint64 {
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	a.dedBase.addHash(&hash, JsonArray)
-	binary.Write(&hash, hashEndian, a.minLen)
-	binary.Write(&hash, hashEndian, a.maxLen)
+	hash := a.dedBase.startHash(JsonArray)
+	binary.Write(hash, hashEndian, a.minLen)
+	binary.Write(hash, hashEndian, a.maxLen)
 	eh := a.ed.Hash(dh)
-	binary.Write(&hash, hashEndian, eh)
+	binary.Write(hash, hashEndian, eh)
 	res := hash.Sum64()
-	dh[res] = append(dh[res], a)
+	dh[res] = addNotEqual(dh[res], a)
 	return res
 }
 
@@ -278,6 +281,8 @@ func (a *Array) Equal(d Deducer) bool {
 	// TODO
 	return res
 }
+
+func (a *Array) super() *dedBase { return &a.dedBase }
 
 type Object struct {
 	dedBase
@@ -345,14 +350,12 @@ func (o *Object) Hash(dh DedupHash) uint64 {
 		mems = append(mems, memhash{n, mh})
 	}
 	sort.Slice(mems, func(i, j int) bool { return mems[i].n < mems[j].n })
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	o.dedBase.addHash(&hash, JsonObject)
+	hash := o.dedBase.startHash(JsonObject)
 	for _, m := range mems {
-		binary.Write(&hash, hashEndian, m.h)
+		binary.Write(hash, hashEndian, m.h)
 	}
 	res := hash.Sum64()
-	dh[res] = append(dh[res], o)
+	dh[res] = addNotEqual(dh[res], o)
 	return res
 }
 
@@ -366,6 +369,8 @@ func (o *Object) Equal(d Deducer) bool {
 	return res
 }
 
+func (o *Object) super() *dedBase { return &o.dedBase }
+
 type Enum struct {
 	dedBase
 	base Deducer
@@ -378,9 +383,9 @@ func (e *Enum) Accepts(v interface{}) bool {
 
 func (e *Enum) Example(v interface{}) Deducer {
 	if e.base.Accepts(v) {
-		if e.cfg.testAsEnum(e, v) {
+		if !e.cfg.testAsEnum(e, v) {
 			if e.Nullable() {
-				e.setNullable(true)
+				e.base.super().null = true
 			}
 			return e.base
 		}
@@ -405,14 +410,12 @@ func (e *Enum) Example(v interface{}) Deducer {
 }
 
 func (e *Enum) Hash(dh DedupHash) uint64 {
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	e.dedBase.addHash(&hash, jsonEnum)
+	hash := e.dedBase.startHash(jsonEnum)
 	eh := e.base.Hash(dh)
-	binary.Write(&hash, hashEndian, eh)
+	binary.Write(hash, hashEndian, eh)
 	// TODO take enum literals into account
 	res := hash.Sum64()
-	dh[res] = append(dh[res], e)
+	dh[res] = addNotEqual(dh[res], e)
 	return res
 }
 
@@ -425,6 +428,8 @@ func (e *Enum) Equal(d Deducer) bool {
 	// TODO
 	return res
 }
+
+func (e *Enum) super() *dedBase { return &e.dedBase }
 
 type Union struct {
 	dedBase
@@ -458,14 +463,12 @@ func (u *Union) Hash(dh DedupHash) uint64 {
 		dhs = append(dhs, ed.Hash(dh))
 	}
 	sort.Slice(dhs, func(i, j int) bool { return dhs[i] < dhs[j] })
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	u.dedBase.addHash(&hash, jsonUnion)
+	hash := u.dedBase.startHash(jsonUnion)
 	for _, h := range dhs {
-		binary.Write(&hash, hashEndian, h)
+		binary.Write(hash, hashEndian, h)
 	}
 	res := hash.Sum64()
-	dh[res] = append(dh[res], u)
+	dh[res] = addNotEqual(dh[res], u)
 	return res
 }
 
@@ -478,6 +481,8 @@ func (u *Union) Equal(d Deducer) bool {
 	// TODO
 	return res
 }
+
+func (u *Union) super() *dedBase { return &u.dedBase }
 
 type Any struct{ dedBase }
 
@@ -495,11 +500,9 @@ func (_ *Any) Accepts(v interface{}) bool { return true }
 func (a *Any) Example(v interface{}) Deducer { return a }
 
 func (a *Any) Hash(dh DedupHash) uint64 {
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	a.dedBase.addHash(&hash, jsonAny)
+	hash := a.dedBase.startHash(jsonAny)
 	res := hash.Sum64()
-	dh[res] = append(dh[res], a)
+	dh[res] = addNotEqual(dh[res], a)
 	return res
 }
 
@@ -510,6 +513,8 @@ func (a *Any) Equal(d Deducer) bool {
 	}
 	return a.dedBase.Equal(&b.dedBase)
 }
+
+func (a *Any) super() *dedBase { return &a.dedBase }
 
 type Number struct {
 	dedBase
@@ -543,9 +548,7 @@ func (nr *Number) Example(v interface{}) Deducer {
 }
 
 func (nr *Number) Hash(dh DedupHash) uint64 {
-	var hash maphash.Hash
-	hash.SetSeed(hashSeed)
-	nr.dedBase.addHash(&hash, JsonNumber)
+	hash := nr.dedBase.startHash(JsonNumber)
 	if nr.cfg.NumberHash&NumberHashIntFloat != 0 {
 		if nr.isFloat {
 			hash.WriteByte(1)
@@ -554,13 +557,13 @@ func (nr *Number) Hash(dh DedupHash) uint64 {
 		}
 	}
 	if nr.cfg.NumberHash&NumberHashMin != 0 {
-		binary.Write(&hash, hashEndian, nr.min)
+		binary.Write(hash, hashEndian, nr.min)
 	}
 	if nr.cfg.NumberHash&NumberHashMax != 0 {
-		binary.Write(&hash, hashEndian, nr.max)
+		binary.Write(hash, hashEndian, nr.max)
 	}
 	res := hash.Sum64()
-	dh[res] = append(dh[res], nr)
+	dh[res] = addNotEqual(dh[res], nr)
 	return res
 }
 
@@ -570,9 +573,19 @@ func (nr *Number) Equal(d Deducer) bool {
 		return false
 	}
 	res := nr.dedBase.Equal(&b.dedBase)
-	// TODO
+	if res && nr.cfg.NumberHash&NumberHashIntFloat != 0 {
+		res = nr.isFloat == b.isFloat
+	}
+	if res && nr.cfg.NumberHash&NumberHashMin != 0 {
+		res = nr.min == b.min
+	}
+	if res && nr.cfg.NumberHash&NumberHashMax != 0 {
+		res = nr.max == b.max
+	}
 	return res
 }
+
+func (nr *Number) super() *dedBase { return &nr.dedBase }
 
 func (nr *Number) updateFloat(v interface{}) float64 {
 	x := asNumber(v)
@@ -587,6 +600,28 @@ func (nr *Number) updateFloat(v interface{}) float64 {
 	}
 	return x
 }
+
+type Invalid struct {
+	error
+}
+
+func (_ Invalid) Accepts(_ interface{}) bool { return false }
+
+func (i Invalid) Example(v interface{}) Deducer { return i }
+
+func (_ Invalid) Nullable() bool { return false }
+
+func (_ Invalid) setNullable(_ bool) {}
+
+func (_ Invalid) Hash(dh DedupHash) uint64 { return 0 }
+
+func (_ Invalid) Equal(_ Deducer) bool { return false }
+
+func (_ Invalid) Copies() []Deducer { return nil }
+
+var invBase dedBase
+
+func (_ Invalid) super() *dedBase { return &invBase }
 
 func asNumber(v interface{}) float64 {
 	switch n := v.(type) {
@@ -618,18 +653,13 @@ func asNumber(v interface{}) float64 {
 	return math.NaN()
 }
 
-type Invalid struct {
-	error
+func addNotEqual(ds []Deducer, d Deducer) []Deducer {
+	for _, e := range ds {
+		if e.Equal(d) {
+			d.super().orig = e
+			e.super().copies = append(e.super().copies, d)
+			return ds
+		}
+	}
+	return append(ds, d)
 }
-
-func (_ Invalid) Accepts(_ interface{}) bool { return false }
-
-func (i Invalid) Example(v interface{}) Deducer { return i }
-
-func (_ Invalid) Nullable() bool { return false }
-
-func (_ Invalid) setNullable(_ bool) {}
-
-func (_ Invalid) Hash(dh DedupHash) uint64 { return 0 }
-
-func (_ Invalid) Equal(_ Deducer) bool { return false }

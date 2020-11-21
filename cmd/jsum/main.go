@@ -84,7 +84,10 @@ func main() {
 	dedup := make(jsum.DedupHash)
 	scm.Hash(dedup)
 	fmt.Printf("Found %d distinct types\n", len(dedup))
-	// for _, scms := range dedup {
-	// 	fmt.Printf("- %d\n", len(scms))
-	// }
+	for _, scms := range dedup {
+		for _, s := range scms {
+			fmt.Println("############ Reused:")
+			sum.Print(s)
+		}
+	}
 }
