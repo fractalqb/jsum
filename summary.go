@@ -102,12 +102,12 @@ func (s *Summary) object(o *Object, indent int) error {
 	for i, a := range nms {
 		s.indent(indent + 1)
 		m := o.mbrs[a]
-		if m.n < o.count {
-			fmt.Fprintf(s.w, "#%-2d \"%s\" %d/%d:\n", i+1, a, m.n, o.count)
+		if m.occurence < o.count {
+			fmt.Fprintf(s.w, "#%-2d \"%s\" in %d / %d:\n", i+1, a, m.occurence, o.count)
 		} else {
-			fmt.Fprintf(s.w, "#%-2d \"%s\" × %d:\n", i+1, a, m.n)
+			fmt.Fprintf(s.w, "#%-2d \"%s\" mandatory (%d×):\n", i+1, a, m.occurence)
 		}
-		if err := s.printIndet(m.d, indent+2); err != nil {
+		if err := s.printIndet(m.ded, indent+2); err != nil {
 			return err
 		}
 	}
@@ -123,11 +123,11 @@ func (s *Summary) array(a *Array, indent int) error {
 		lens = fmt.Sprintf("%d…%d", a.minLen, a.maxLen)
 	}
 	if a.Nullable() {
-		fmt.Fprintf(s.w, "[Array %s] of:\n", lens)
+		fmt.Fprintf(s.w, "[Array] of %s:\n", lens)
 	} else {
-		fmt.Fprintf(s.w, "Array %s of:\n", lens)
+		fmt.Fprintf(s.w, "Array of %s:\n", lens)
 	}
-	return s.printIndet(a.ed, indent+1)
+	return s.printIndet(a.elem, indent+1)
 }
 
 func (s *Summary) enum(e *Enum, indent int) error {
@@ -148,8 +148,8 @@ func (s *Summary) enum(e *Enum, indent int) error {
 
 func (s *Summary) union(u *Union, indent int) error {
 	s.indent(indent)
-	fmt.Fprintf(s.w, "Union of %d types:\n", len(u.ds))
-	for _, d := range u.ds {
+	fmt.Fprintf(s.w, "Union of %d types:\n", len(u.variants))
+	for _, d := range u.variants {
 		if err := s.printIndet(d, indent+1); err != nil {
 			return err
 		}

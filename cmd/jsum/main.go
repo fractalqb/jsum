@@ -21,8 +21,8 @@ var (
 		},
 	}
 	cfg = jsum.Config{
-		AsEnum:     keepEnum.Test,
-		NumberHash: jsum.NumberHashIntFloat,
+		AsEnum:    keepEnum.Test,
+		DupNumber: jsum.NumberDupIntFloat,
 	}
 	indentStr = ". "
 	fEnums    bool
@@ -34,12 +34,10 @@ func read(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
 	for {
 		var jv interface{}
 		err := dec.Decode(&jv)
-		if err == io.EOF {
+		switch {
+		case err == io.EOF:
 			return d, samples
-		} else if err != nil {
-			log.Fatal(err)
-		}
-		if err != nil {
+		case err != nil:
 			log.Fatal(err)
 		}
 		d = d.Example(jv)
@@ -86,8 +84,10 @@ func main() {
 	fmt.Printf("Found %d distinct types\n", len(dedup))
 	for _, scms := range dedup {
 		for _, s := range scms {
-			fmt.Println("############ Reused:")
-			sum.Print(s)
+			if dup := len(s.Copies()); dup > 0 {
+				fmt.Printf("\nOccurs %d times:\n", dup+1)
+				sum.Print(s)
+			}
 		}
 	}
 }

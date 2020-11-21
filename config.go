@@ -4,12 +4,12 @@ import (
 	"math"
 )
 
-type NumberHash uint
+type NumberDup uint
 
 const (
-	NumberHashIntFloat NumberHash = (1 << iota)
-	NumberHashMin
-	NumberHashMax
+	NumberDupIntFloat NumberDup = (1 << iota)
+	NumberDupMin
+	NumberDupMax
 )
 
 type Config struct {
@@ -17,7 +17,7 @@ type Config struct {
 	// AsEnum is nil no value will be deduced to be an enum.
 	AsEnum func(e *Enum, v interface{}) bool
 
-	NumberHash NumberHash
+	DupNumber NumberDup
 }
 
 func (cfg *Config) testAsEnum(e *Enum, v interface{}) bool {
