@@ -20,9 +20,8 @@ func (u *Union) Accepts(v interface{}) bool {
 }
 
 func (u *Union) Example(v interface{}) Deducer {
-	vjt := JsonTypeOf(v)
 	for _, d := range u.variants {
-		if d.Accepts(vjt) {
+		if d.Accepts(v) {
 			return u
 		}
 	}
