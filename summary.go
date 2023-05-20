@@ -3,6 +3,7 @@ package jsum
 import (
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 )
@@ -139,9 +140,16 @@ func (s *Summary) enum(e *Enum, indent int) error {
 	if err := s.printIndet(e.base, indent+1); err != nil {
 		return err
 	}
+	var countWidth int
+	for _, n := range e.lits {
+		if w := intWidth(n); w > countWidth {
+			countWidth = w
+		}
+	}
+	form := fmt.Sprintf("%%%dd × '%%+v'\n", countWidth)
 	for v, n := range e.lits {
 		s.indent(indent + 1)
-		fmt.Fprintf(s.w, "%d ×\t{%+v}\n", n, v)
+		fmt.Fprintf(s.w, form, n, v)
 	}
 	return nil
 }
@@ -155,4 +163,15 @@ func (s *Summary) union(u *Union, indent int) error {
 		}
 	}
 	return nil
+}
+
+func intWidth(i int) int {
+	switch {
+	case i == 0:
+		return 1
+	case i < 0:
+		return 1 + intWidth(-i)
+	}
+	l := math.Log10(float64(i))
+	return int(math.Trunc(l)) + 1
 }
