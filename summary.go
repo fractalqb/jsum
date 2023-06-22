@@ -8,13 +8,22 @@ import (
 	"strconv"
 )
 
-type Summary struct {
-	w      io.Writer
-	Indent string
+type SummaryConfig struct {
+	Indent    string
+	StringMax int
 }
 
-func NewSummary(w io.Writer) *Summary {
-	return &Summary{w: w}
+type Summary struct {
+	w io.Writer
+	SummaryConfig
+}
+
+func NewSummary(w io.Writer, cfg *SummaryConfig) *Summary {
+	res := &Summary{w: w}
+	if cfg != nil {
+		res.SummaryConfig = *cfg
+	}
+	return res
 }
 
 func (s *Summary) Print(scm Deducer) error {
@@ -23,30 +32,16 @@ func (s *Summary) Print(scm Deducer) error {
 
 func (s *Summary) printIndet(scm Deducer, indent int) (err error) {
 	switch ded := scm.(type) {
-	case *Scalar:
-		f := "%s"
-		if ded.Nullable() {
-			f = "[%s]"
-		}
-		switch ded.jt {
-		case JsonString:
-			s.indent(indent)
-			fmt.Fprintf(s.w, f, "String\n")
-		case JsonBool:
-			s.indent(indent)
-			fmt.Fprintf(s.w, f, "Boolean\n")
-		default:
-			err = fmt.Errorf("illegal scalar %d", ded.jt)
-			fmt.Fprintf(s.w, "<%s>\n", err)
-		}
+	case *String:
+		err = s.str(ded, indent)
 	case *Number:
 		err = s.number(ded, indent)
 	case *Object:
 		err = s.object(ded, indent)
+	case *Boolean:
+		err = s.bool(ded, indent)
 	case *Array:
 		err = s.array(ded, indent)
-	case *Enum:
-		err = s.enum(ded, indent)
 	case *Union:
 		err = s.union(ded, indent)
 	case *Any:
@@ -76,11 +71,73 @@ func (s *Summary) indent(i int) {
 	}
 }
 
+func (s *Summary) str(n *String, indent int) error {
+	minLen, maxLen := math.MaxInt, 0
+	var strs []string
+	for str := range n.stats {
+		strs = append(strs, str)
+		l := len(str)
+		if l < minLen {
+			minLen = l
+		}
+		if l > maxLen {
+			maxLen = l
+		}
+	}
+	f := "String len:%d...%d\n"
+	if n.Nullable() {
+		f = "[String] len:%d...%d\n"
+	}
+	s.indent(indent)
+	fmt.Fprintf(s.w, f, minLen, maxLen)
+	sort.Strings(strs)
+	if len(strs) > s.StringMax {
+		h := s.StringMax / 2
+		t := s.StringMax - h - 1
+		if h < 1 {
+			h = 1
+		}
+		if t < 1 {
+			t = 1
+		}
+		for _, str := range strs[:h] {
+			s.indent(indent + 1)
+			fmt.Fprintf(s.w, "%3d × \"%s\"\n", n.stats[str], str)
+		}
+		s.indent(indent + 1)
+		fmt.Fprintf(s.w, "  … %d …\n", len(strs)-h-t)
+		for _, str := range strs[len(strs)-t:] {
+			s.indent(indent + 1)
+			fmt.Fprintf(s.w, "%3d × \"%s\"\n", n.stats[str], str)
+		}
+	} else {
+		for _, str := range strs {
+			s.indent(indent + 1)
+			fmt.Fprintf(s.w, "%3d × \"%s\"\n", n.stats[str], str)
+		}
+	}
+	return nil
+}
+
+func (s *Summary) bool(n *Boolean, indent int) error {
+	f := "Boolean true:%d / false:%d\n"
+	if n.Nullable() {
+		f = "[Boolean] true:%d / false:%d\n"
+	}
+	s.indent(indent)
+	fmt.Fprintf(s.w, f, n.tNo, n.fNo)
+	return nil
+}
+
 func (s *Summary) number(n *Number, indent int) error {
 	s.indent(indent)
 	var sum string
 	if n.isFloat {
-		sum = fmt.Sprintf("Number %f–%f", n.min, n.max)
+		if n.hadFrac {
+			sum = fmt.Sprintf("Number %f–%f", n.min, n.max)
+		} else {
+			sum = fmt.Sprintf("Number %f–%f 0-fracs", n.min, n.max)
+		}
 	} else {
 		sum = fmt.Sprintf("Integer %d–%d", int64(n.min), int64(n.max))
 	}
@@ -96,7 +153,7 @@ func (s *Summary) object(o *Object, indent int) error {
 	s.indent(indent)
 	fmt.Fprintf(s.w, "Object with %d members:\n", len(o.mbrs))
 	nms := make([]string, 0, len(o.mbrs))
-	for a, _ := range o.mbrs {
+	for a := range o.mbrs {
 		nms = append(nms, a)
 	}
 	sort.Strings(nms)
@@ -129,29 +186,6 @@ func (s *Summary) array(a *Array, indent int) error {
 		fmt.Fprintf(s.w, "Array of %s:\n", lens)
 	}
 	return s.printIndet(a.elem, indent+1)
-}
-
-func (s *Summary) enum(e *Enum, indent int) error {
-	if len(e.lits) == 1 {
-		return s.printIndet(e.base, indent)
-	}
-	s.indent(indent)
-	fmt.Fprintf(s.w, "Enum with %d literals of:\n", len(e.lits))
-	if err := s.printIndet(e.base, indent+1); err != nil {
-		return err
-	}
-	var countWidth int
-	for _, n := range e.lits {
-		if w := intWidth(n); w > countWidth {
-			countWidth = w
-		}
-	}
-	form := fmt.Sprintf("%%%dd × '%%+v'\n", countWidth)
-	for v, n := range e.lits {
-		s.indent(indent + 1)
-		fmt.Fprintf(s.w, form, n, v)
-	}
-	return nil
 }
 
 func (s *Summary) union(u *Union, indent int) error {

@@ -53,8 +53,8 @@ func (a *Array) Example(v interface{}) Deducer {
 
 func (a *Array) Hash(dh DedupHash) uint64 {
 	hash := a.dedBase.startHash(JsonArray)
-	binary.Write(hash, hashEndian, a.minLen)
-	binary.Write(hash, hashEndian, a.maxLen)
+	binary.Write(hash, hashEndian, int64(a.minLen))
+	binary.Write(hash, hashEndian, int64(a.maxLen))
 	eh := a.elem.Hash(dh)
 	binary.Write(hash, hashEndian, eh)
 	res := hash.Sum64()

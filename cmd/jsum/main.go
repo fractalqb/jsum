@@ -12,16 +12,7 @@ import (
 )
 
 var (
-	keepEnum = jsum.KeepJsonEnum{
-		Default: true,
-		PerType: map[jsum.JsonType]jsum.EnumTest{
-			jsum.JsonBool:   jsum.KeepBoolEnum,
-			jsum.JsonString: jsum.KeepStringEnum(50).Test,
-			jsum.JsonNumber: jsum.KeepNumberEnum(20).Test,
-		},
-	}
 	cfg = jsum.Config{
-		AsEnum:    keepEnum.Test,
 		DupNumber: jsum.NumberDupIntFloat,
 	}
 	indentStr = ". "
@@ -58,11 +49,7 @@ func readFile(name string, d jsum.Deducer) (jsum.Deducer, int) {
 func main() {
 	flag.StringVar(&indentStr, "indent", indentStr, "Indentation string")
 	flag.BoolVar(&fEnums, "enums", false, "Enable deduction of enums")
-	flag.BoolVar(&keepEnum.Default, "keep-enum-default", true, "Keep enum by default")
 	flag.Parse()
-	if !fEnums {
-		cfg.AsEnum = nil
-	}
 	var scm jsum.Deducer = jsum.NewUnknown(&cfg)
 	var samples, n int
 	if len(flag.Args()) > 0 {
@@ -74,8 +61,10 @@ func main() {
 		scm, samples = read(os.Stdin, scm)
 	}
 	fmt.Printf("Deduced from %d samples:\n", samples)
-	sum := jsum.NewSummary(os.Stdout)
-	sum.Indent = indentStr
+	sum := jsum.NewSummary(os.Stdout, &jsum.SummaryConfig{
+		Indent:    indentStr,
+		StringMax: 12,
+	})
 	if err := sum.Print(scm); err != nil {
 		log.Fatal(err)
 	}

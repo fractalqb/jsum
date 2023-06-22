@@ -11,7 +11,7 @@ func newAny(cfg *Config, nullable bool) *Any {
 	}
 }
 
-func (_ *Any) Accepts(v interface{}) bool { return true }
+func (*Any) Accepts(v interface{}) bool { return true }
 
 func (a *Any) Example(v interface{}) Deducer { return a }
 

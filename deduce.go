@@ -13,10 +13,9 @@ const (
 	JsonArray
 	JsonString
 	JsonNumber
-	JsonBool
+	JsonBoolean
 
 	jsonUnknown
-	jsonEnum
 	jsonUnion
 	jsonAny
 )
@@ -27,7 +26,7 @@ var (
 )
 
 func (jt JsonType) Scalar() bool {
-	return jt >= JsonString && jt <= JsonBool
+	return jt >= JsonString && jt <= JsonBoolean
 }
 
 func JsonTypeOf(v interface{}) JsonType {
@@ -41,7 +40,7 @@ func JsonTypeOf(v interface{}) JsonType {
 	case float32, float64:
 		return JsonNumber
 	case bool:
-		return JsonBool
+		return JsonBoolean
 	case map[string]interface{}:
 		return JsonObject
 	case []interface{}:
@@ -57,7 +56,7 @@ func JsonTypeOf(v interface{}) JsonType {
 	return 0
 }
 
-type DedupHash map[uint64][]Deducer
+type DedupHash = map[uint64][]Deducer
 
 type Deducer interface {
 	Accepts(v interface{}) bool
@@ -83,7 +82,7 @@ func (d *dedBase) Copies() []Deducer { return d.copies }
 func (d *dedBase) startHash(jt JsonType) *maphash.Hash {
 	h := new(maphash.Hash)
 	h.SetSeed(hashSeed)
-	binary.Write(h, hashEndian, jt)
+	binary.Write(h, hashEndian, int32(jt))
 	if d.null {
 		h.WriteByte(0)
 	} else {

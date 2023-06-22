@@ -7,8 +7,9 @@ import (
 
 type Number struct {
 	dedBase
-	isFloat  bool
 	min, max float64
+	isFloat  bool
+	hadFrac  bool
 }
 
 func (nr *Number) Accepts(v interface{}) bool {
@@ -26,6 +27,10 @@ func (nr *Number) Example(v interface{}) Deducer {
 			nr.min = x
 		} else if x > nr.max {
 			nr.max = x
+		}
+		if !nr.hadFrac {
+			_, exp := math.Frexp(x)
+			nr.hadFrac = exp != 0
 		}
 	default:
 		return &Union{
@@ -51,6 +56,7 @@ func (nr *Number) Hash(dh DedupHash) uint64 {
 	if nr.cfg.DupNumber&NumberDupMax != 0 {
 		binary.Write(hash, hashEndian, nr.max)
 	}
+	// TODO consider hadFloat (-> Equal)
 	res := hash.Sum64()
 	dh[res] = addNotEqual(dh[res], nr)
 	return res

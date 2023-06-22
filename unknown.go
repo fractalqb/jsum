@@ -16,27 +16,16 @@ func (a *Unknown) Example(v interface{}) Deducer {
 	case 0:
 		a.null = true
 		return a
-	case JsonString, JsonBool:
-		if a.cfg.testAsEnum(nil, v) {
-			return &Enum{
-				dedBase: dedBase{cfg: a.cfg},
-				base:    &Scalar{dedBase: dedBase{cfg: a.cfg}, jt: vjt},
-				lits:    map[interface{}]int{v: 1},
-			}
-		}
-		return &Scalar{dedBase: dedBase{cfg: a.cfg}, jt: vjt}
+	case JsonString:
+		str := NewString(a.cfg, a.null)
+		return str.Example(v)
 	case JsonNumber:
 		num := &Number{dedBase: dedBase{cfg: a.cfg, null: a.null}}
 		x := num.updateFloat(v)
 		num.min, num.max = x, x
-		if a.cfg.testAsEnum(nil, v) {
-			return &Enum{
-				dedBase: dedBase{cfg: a.cfg},
-				base:    num,
-				lits:    map[interface{}]int{v: 1},
-			}
-		}
 		return num
+	case JsonBoolean:
+		return &Boolean{dedBase: dedBase{cfg: a.cfg}}
 	case JsonObject:
 		switch o := v.(type) {
 		case map[string]interface{}:
@@ -48,7 +37,7 @@ func (a *Unknown) Example(v interface{}) Deducer {
 			return newArrJson(a.cfg, av)
 		}
 	}
-	return Invalid{fmt.Errorf("Cannot deduce JSON from: %T", v)}
+	return Invalid{fmt.Errorf("cannot deduce JSON from: %T", v)}
 }
 
 func (a *Unknown) Hash(dh DedupHash) uint64 {
