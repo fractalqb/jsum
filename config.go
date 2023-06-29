@@ -1,13 +1,31 @@
 package jsum
 
-type NumberDup uint
+type DedupBool uint
 
 const (
-	NumberDupIntFloat NumberDup = (1 << iota)
-	NumberDupMin
-	NumberDupMax
+	DedupBoolTrue DedupBool = 1 << iota
+	DedupBoolFalse
+)
+
+type DedupNumber uint
+
+const (
+	DedpuNumberIntFloat DedupNumber = 1 << iota
+	DedupNumberFrac
+	DedupNumberMin
+	DedupNumberMax
+	DedupNumberNeg
+	DedupNumberPos
+)
+
+type DedupString uint
+
+const (
+	DedupStringEmpty DedupString = 1 << iota
 )
 
 type Config struct {
-	DupNumber NumberDup
+	DedupBool   DedupBool
+	DedupNumber DedupNumber
+	DedupString DedupString
 }

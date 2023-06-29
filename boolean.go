@@ -25,14 +25,20 @@ func (a *Boolean) Example(v interface{}) Deducer {
 
 func (a *Boolean) Hash(dh DedupHash) uint64 {
 	hash := a.dedBase.startHash(JsonBoolean)
-	var nos byte
-	if a.fNo > 0 {
-		nos = 1
+	if a.cfg.DedupBool&DedupBoolFalse != 0 {
+		if a.fNo > 0 {
+			hash.WriteByte(1)
+		} else {
+			hash.WriteByte(0)
+		}
 	}
-	if a.tNo > 0 {
-		nos |= 2
+	if a.cfg.DedupBool&DedupBoolTrue != 0 {
+		if a.tNo > 0 {
+			hash.WriteByte(1)
+		} else {
+			hash.WriteByte(0)
+		}
 	}
-	hash.WriteByte(nos)
 	res := hash.Sum64()
 	dh[res] = addNotEqual(dh[res], a)
 	return res

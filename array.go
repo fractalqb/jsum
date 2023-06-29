@@ -53,8 +53,11 @@ func (a *Array) Example(v interface{}) Deducer {
 
 func (a *Array) Hash(dh DedupHash) uint64 {
 	hash := a.dedBase.startHash(JsonArray)
-	binary.Write(hash, hashEndian, int64(a.minLen))
-	binary.Write(hash, hashEndian, int64(a.maxLen))
+	if a.maxLen == 0 {
+		hash.WriteByte(0)
+	} else {
+		hash.WriteByte(1)
+	}
 	eh := a.elem.Hash(dh)
 	binary.Write(hash, hashEndian, eh)
 	res := hash.Sum64()
@@ -67,10 +70,13 @@ func (a *Array) Equal(d Deducer) bool {
 	if !ok {
 		return false
 	}
-	res := a.dedBase.Equal(&b.dedBase)
-	res = res && a.minLen == b.minLen && a.maxLen == b.maxLen
-	res = res && a.elem.Equal(b.elem)
-	return res
+	if !a.dedBase.Equal(&b.dedBase) {
+		return false
+	}
+	if (a.minLen == 0) != (b.minLen == 0) {
+		return false
+	}
+	return a.elem.Equal(b.elem)
 }
 
 func (a *Array) super() *dedBase { return &a.dedBase }

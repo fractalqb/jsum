@@ -56,7 +56,18 @@ func JsonTypeOf(v interface{}) JsonType {
 	return 0
 }
 
-type DedupHash = map[uint64][]Deducer
+type DedupHash map[uint64][]Deducer
+
+func (dh DedupHash) ReusedTypes() (res []Deducer) {
+	for _, d := range dh {
+		for _, t := range d {
+			if len(t.super().copies) > 0 {
+				res = append(res, t)
+			}
+		}
+	}
+	return res
+}
 
 type Deducer interface {
 	Accepts(v interface{}) bool

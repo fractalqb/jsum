@@ -6,15 +6,18 @@ import (
 	"math"
 	"sort"
 	"strconv"
+
+	"git.fractalqb.de/fractalqb/jsum/treew"
 )
 
 type SummaryConfig struct {
-	Indent    string
+	TreeStyle *treew.Style
 	StringMax int
 }
 
 type Summary struct {
-	w io.Writer
+	w   io.Writer
+	tpf treew.Prefix
 	SummaryConfig
 }
 
@@ -22,37 +25,41 @@ func NewSummary(w io.Writer, cfg *SummaryConfig) *Summary {
 	res := &Summary{w: w}
 	if cfg != nil {
 		res.SummaryConfig = *cfg
+		res.tpf.Style = cfg.TreeStyle
 	}
 	return res
 }
 
 func (s *Summary) Print(scm Deducer) error {
-	return s.printIndet(scm, 0)
+	return s.printIndet(scm, true)
 }
 
-func (s *Summary) printIndet(scm Deducer, indent int) (err error) {
+func (s *Summary) printIndet(scm Deducer, last bool) (err error) {
+	if last {
+		io.WriteString(s.w, s.tpf.Last(nil))
+	} else {
+		io.WriteString(s.w, s.tpf.Next(nil))
+	}
 	switch ded := scm.(type) {
 	case *String:
-		err = s.str(ded, indent)
+		err = s.str(ded)
 	case *Number:
-		err = s.number(ded, indent)
+		err = s.number(ded)
 	case *Object:
-		err = s.object(ded, indent)
+		err = s.object(ded)
 	case *Boolean:
-		err = s.bool(ded, indent)
+		err = s.bool(ded)
 	case *Array:
-		err = s.array(ded, indent)
+		err = s.array(ded)
 	case *Union:
-		err = s.union(ded, indent)
+		err = s.union(ded)
 	case *Any:
-		s.indent(indent)
 		if ded.Nullable() {
 			io.WriteString(s.w, "Any\n")
 		} else {
 			io.WriteString(s.w, "[Any]\n")
 		}
 	case *Unknown:
-		s.indent(indent)
 		if ded.Nullable() {
 			io.WriteString(s.w, "???\n")
 		} else {
@@ -64,14 +71,7 @@ func (s *Summary) printIndet(scm Deducer, indent int) (err error) {
 	return err
 }
 
-func (s *Summary) indent(i int) {
-	for i > 0 {
-		io.WriteString(s.w, s.Indent)
-		i--
-	}
-}
-
-func (s *Summary) str(n *String, indent int) error {
+func (s *Summary) str(n *String) error {
 	minLen, maxLen := math.MaxInt, 0
 	var strs []string
 	for str := range n.stats {
@@ -84,13 +84,18 @@ func (s *Summary) str(n *String, indent int) error {
 			maxLen = l
 		}
 	}
-	f := "String len:%d...%d\n"
 	if n.Nullable() {
-		f = "[String] len:%d...%d\n"
+		fmt.Fprint(s.w, "[String]")
+	} else {
+		fmt.Fprint(s.w, "String")
 	}
-	s.indent(indent)
-	fmt.Fprintf(s.w, f, minLen, maxLen)
+	if minLen == maxLen {
+		fmt.Fprintf(s.w, " len:%d\n", minLen)
+	} else {
+		fmt.Fprintf(s.w, " len:%d..%d\n", minLen, maxLen)
+	}
 	sort.Strings(strs)
+	s.tpf.Descend()
 	if len(strs) > s.StringMax {
 		h := s.StringMax / 2
 		t := s.StringMax - h - 1
@@ -100,37 +105,61 @@ func (s *Summary) str(n *String, indent int) error {
 		if t < 1 {
 			t = 1
 		}
+		var iw int
 		for _, str := range strs[:h] {
-			s.indent(indent + 1)
-			fmt.Fprintf(s.w, "%3d × \"%s\"\n", n.stats[str], str)
+			iw = maxIntWidth(iw, n.stats[str])
 		}
-		s.indent(indent + 1)
-		fmt.Fprintf(s.w, "  … %d …\n", len(strs)-h-t)
 		for _, str := range strs[len(strs)-t:] {
-			s.indent(indent + 1)
-			fmt.Fprintf(s.w, "%3d × \"%s\"\n", n.stats[str], str)
+			iw = maxIntWidth(iw, n.stats[str])
+		}
+		form := fmt.Sprintf("%%s%%%dd x \"%%s\"\n", iw)
+		for _, str := range strs[:h] {
+			fmt.Fprintf(s.w, form, s.tpf.Next(nil), n.stats[str], str)
+		}
+		fmt.Fprintf(s.w, "%s... %d ...\n",
+			s.tpf.Cont(nil),
+			len(strs)-h-t,
+		)
+		strs = strs[len(strs)-t:]
+		for i, str := range strs {
+			var pf string
+			if i == len(strs)-1 {
+				pf = s.tpf.Last(nil)
+			} else {
+				pf = s.tpf.Next(nil)
+			}
+			fmt.Fprintf(s.w, form, pf, n.stats[str], str)
 		}
 	} else {
-		for _, str := range strs {
-			s.indent(indent + 1)
-			fmt.Fprintf(s.w, "%3d × \"%s\"\n", n.stats[str], str)
+		var iw int
+		for _, n := range n.stats {
+			iw = maxIntWidth(iw, n)
+		}
+		form := fmt.Sprintf("%%s%%%dd x \"%%s\"\n", iw)
+		for i, str := range strs {
+			var pf string
+			if i == len(strs)-1 {
+				pf = s.tpf.Last(nil)
+			} else {
+				pf = s.tpf.Next(nil)
+			}
+			fmt.Fprintf(s.w, form, pf, n.stats[str], str)
 		}
 	}
+	s.tpf.Ascend(1)
 	return nil
 }
 
-func (s *Summary) bool(n *Boolean, indent int) error {
+func (s *Summary) bool(n *Boolean) error {
 	f := "Boolean true:%d / false:%d\n"
 	if n.Nullable() {
 		f = "[Boolean] true:%d / false:%d\n"
 	}
-	s.indent(indent)
 	fmt.Fprintf(s.w, f, n.tNo, n.fNo)
 	return nil
 }
 
-func (s *Summary) number(n *Number, indent int) error {
-	s.indent(indent)
+func (s *Summary) number(n *Number) error {
 	var sum string
 	if n.isFloat {
 		if n.hadFrac {
@@ -149,54 +178,71 @@ func (s *Summary) number(n *Number, indent int) error {
 	return nil
 }
 
-func (s *Summary) object(o *Object, indent int) error {
-	s.indent(indent)
+func (s *Summary) object(o *Object) error {
 	fmt.Fprintf(s.w, "Object with %d members:\n", len(o.mbrs))
 	nms := make([]string, 0, len(o.mbrs))
 	for a := range o.mbrs {
 		nms = append(nms, a)
 	}
 	sort.Strings(nms)
+	s.tpf.Descend()
 	for i, a := range nms {
-		s.indent(indent + 1)
+		var pf string
+		if i == len(nms)-1 {
+			pf = s.tpf.Last(nil)
+		} else {
+			pf = s.tpf.Next(nil)
+		}
 		m := o.mbrs[a]
 		if m.occurence < o.count {
-			fmt.Fprintf(s.w, "#%-2d \"%s\" in %d / %d:\n", i+1, a, m.occurence, o.count)
+			fmt.Fprintf(s.w, "%s#%-2d \"%s\" in %d / %d:\n", pf, i+1, a, m.occurence, o.count)
 		} else {
-			fmt.Fprintf(s.w, "#%-2d \"%s\" mandatory (%d×):\n", i+1, a, m.occurence)
+			fmt.Fprintf(s.w, "%s#%-2d \"%s\" mandatory (%dx):\n", pf, i+1, a, m.occurence)
 		}
-		if err := s.printIndet(m.ded, indent+2); err != nil {
+		s.tpf.Descend()
+		if err := s.printIndet(m.ded, true); err != nil {
 			return err
 		}
+		s.tpf.Ascend(1)
 	}
+	s.tpf.Ascend(1)
 	return nil
 }
 
-func (s *Summary) array(a *Array, indent int) error {
-	s.indent(indent)
+func (s *Summary) array(a *Array) error {
 	var lens string
 	if a.minLen == a.maxLen {
 		lens = strconv.Itoa(a.minLen)
 	} else {
-		lens = fmt.Sprintf("%d…%d", a.minLen, a.maxLen)
+		lens = fmt.Sprintf("%d..%d", a.minLen, a.maxLen)
 	}
 	if a.Nullable() {
 		fmt.Fprintf(s.w, "[Array] of %s:\n", lens)
 	} else {
 		fmt.Fprintf(s.w, "Array of %s:\n", lens)
 	}
-	return s.printIndet(a.elem, indent+1)
+	s.tpf.Descend()
+	defer s.tpf.Ascend(1)
+	return s.printIndet(a.elem, true)
 }
 
-func (s *Summary) union(u *Union, indent int) error {
-	s.indent(indent)
+func (s *Summary) union(u *Union) error {
 	fmt.Fprintf(s.w, "Union of %d types:\n", len(u.variants))
-	for _, d := range u.variants {
-		if err := s.printIndet(d, indent+1); err != nil {
+	s.tpf.Descend()
+	for i, d := range u.variants {
+		if err := s.printIndet(d, i == len(u.variants)-1); err != nil {
 			return err
 		}
 	}
+	s.tpf.Ascend(1)
 	return nil
+}
+
+func maxIntWidth(width int, i int) int {
+	if w := intWidth(i); w > width {
+		width = w
+	}
+	return width
 }
 
 func intWidth(i int) int {

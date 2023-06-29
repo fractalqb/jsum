@@ -43,20 +43,40 @@ func (nr *Number) Example(v interface{}) Deducer {
 
 func (nr *Number) Hash(dh DedupHash) uint64 {
 	hash := nr.dedBase.startHash(JsonNumber)
-	if nr.cfg.DupNumber&NumberDupIntFloat != 0 {
+	if nr.cfg.DedupNumber&DedpuNumberIntFloat != 0 {
 		if nr.isFloat {
 			hash.WriteByte(1)
 		} else {
 			hash.WriteByte(0)
 		}
 	}
-	if nr.cfg.DupNumber&NumberDupMin != 0 {
+	if nr.cfg.DedupNumber&DedupNumberFrac != 0 {
+		if nr.hadFrac {
+			hash.WriteByte(1)
+		} else {
+			hash.WriteByte(0)
+		}
+	}
+	if nr.cfg.DedupNumber&DedupNumberMin != 0 {
 		binary.Write(hash, hashEndian, nr.min)
 	}
-	if nr.cfg.DupNumber&NumberDupMax != 0 {
+	if nr.cfg.DedupNumber&DedupNumberMax != 0 {
 		binary.Write(hash, hashEndian, nr.max)
 	}
-	// TODO consider hadFloat (-> Equal)
+	if nr.cfg.DedupNumber&DedupNumberNeg != 0 {
+		if nr.min < 0 {
+			hash.WriteByte(1)
+		} else {
+			hash.WriteByte(0)
+		}
+	}
+	if nr.cfg.DedupNumber&DedupNumberPos != 0 {
+		if nr.max > 0 {
+			hash.WriteByte(1)
+		} else {
+			hash.WriteByte(0)
+		}
+	}
 	res := hash.Sum64()
 	dh[res] = addNotEqual(dh[res], nr)
 	return res
@@ -68,14 +88,23 @@ func (nr *Number) Equal(d Deducer) bool {
 		return false
 	}
 	res := nr.dedBase.Equal(&b.dedBase)
-	if res && nr.cfg.DupNumber&NumberDupIntFloat != 0 {
+	if res && nr.cfg.DedupNumber&DedpuNumberIntFloat != 0 {
 		res = nr.isFloat == b.isFloat
 	}
-	if res && nr.cfg.DupNumber&NumberDupMin != 0 {
+	if res && nr.cfg.DedupNumber&DedupNumberFrac != 0 {
+		res = nr.hadFrac == b.hadFrac
+	}
+	if res && nr.cfg.DedupNumber&DedupNumberMin != 0 {
 		res = nr.min == b.min
 	}
-	if res && nr.cfg.DupNumber&NumberDupMax != 0 {
+	if res && nr.cfg.DedupNumber&DedupNumberMax != 0 {
 		res = nr.max == b.max
+	}
+	if res && nr.cfg.DedupNumber&DedupNumberNeg != 0 {
+		res = (nr.min < 0) == (b.min < 0)
+	}
+	if res && nr.cfg.DedupNumber&DedupNumberPos != 0 {
+		res = (nr.max > 0) == (b.max > 0)
 	}
 	return res
 }

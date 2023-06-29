@@ -26,7 +26,7 @@ The tools I found were focused on JSON Schema, so I rolled my own…
 2. In the `cmd/jsum` directory you find a simple command line tool to generate
    summaries. Install it with
    
-   `go install git.fractalqb.de/fractalqb/jsum/cmd/jsum`
+   `go install git.fractalqb.de/fractalqb/jsum/cmd/jsum@latest`
 
 ## Whats next
 - JSUM is currently in a "enough to give me the summary" state, it has a
@@ -38,10 +38,7 @@ The tools I found were focused on JSON Schema, so I rolled my own…
   `interface{}`. Quite standard for Go! It does not really hurt for the files
   I'm currently working with, but… – This could be improved
 
-- There are no tools to control the level of detail _after_ the analysis run.
-  Detail level currently can only be adjusted _during_ the analysis run. I expect
-  it to be possible to handle both with some “unified” concept. – This cloud be
-  improved
+- There are no tools to control the level of detail. – This cloud be improved
   
 - For more insight it (IMHO) would be very helpful to detect schema patters that
   occur in different places. I.e. automatically detect common types that are

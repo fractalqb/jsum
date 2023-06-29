@@ -7,16 +7,21 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"git.fractalqb.de/fractalqb/jsum"
+	"git.fractalqb.de/fractalqb/jsum/treew"
 )
 
 var (
 	cfg = jsum.Config{
-		DupNumber: jsum.NumberDupIntFloat,
+		DedupBool:   jsum.DedupBoolFalse | jsum.DedupBoolTrue,
+		DedupNumber: jsum.DedpuNumberIntFloat | jsum.DedupNumberNeg,
+		DedupString: jsum.DedupStringEmpty,
 	}
-	indentStr = ". "
-	fEnums    bool
+	fTreeStyle string
+	fStrMax    = 12
+	fTypes     bool
 )
 
 func read(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
@@ -47,8 +52,9 @@ func readFile(name string, d jsum.Deducer) (jsum.Deducer, int) {
 }
 
 func main() {
-	flag.StringVar(&indentStr, "indent", indentStr, "Indentation string")
-	flag.BoolVar(&fEnums, "enums", false, "Enable deduction of enums")
+	flag.StringVar(&fTreeStyle, "tree", "draw", "Select style for tree drawing from: ascii, draw, items")
+	flag.IntVar(&fStrMax, "strings", fStrMax, "Max number of strings values to show per property")
+	flag.BoolVar(&fTypes, "types", fTypes, "Find reused types (experimental)")
 	flag.Parse()
 	var scm jsum.Deducer = jsum.NewUnknown(&cfg)
 	var samples, n int
@@ -60,23 +66,35 @@ func main() {
 	} else {
 		scm, samples = read(os.Stdin, scm)
 	}
-	fmt.Printf("Deduced from %d samples:\n", samples)
+	var tstyle *treew.Style
+	switch fTreeStyle {
+	case "a", "ascii":
+		tstyle = treew.ASCIIStyle()
+	case "d", "draw":
+		tstyle = treew.BoxDrawStyle()
+	case "i", "items":
+		tstyle = treew.ItemStyle()
+	}
+	head := fmt.Sprintf("Deduced from %d samples:", samples)
+	fmt.Println(head)
+	fmt.Println(strings.Repeat("=", len(head)))
 	sum := jsum.NewSummary(os.Stdout, &jsum.SummaryConfig{
-		Indent:    indentStr,
-		StringMax: 12,
+		TreeStyle: tstyle,
+		StringMax: fStrMax,
 	})
 	if err := sum.Print(scm); err != nil {
 		log.Fatal(err)
 	}
-	dedup := make(jsum.DedupHash)
-	scm.Hash(dedup)
-	fmt.Printf("Found %d distinct types\n", len(dedup))
-	for _, scms := range dedup {
-		for _, s := range scms {
-			if dup := len(s.Copies()); dup > 0 {
-				fmt.Printf("\nOccurs %d times:\n", dup+1)
-				sum.Print(s)
-			}
+	if fTypes {
+		dedup := make(jsum.DedupHash)
+		scm.Hash(dedup)
+		tdefs := dedup.ReusedTypes()
+		fmt.Printf("\nFound %d distinct types\n", len(tdefs))
+		for _, def := range tdefs {
+			head = fmt.Sprintf("\nOccurs %d times:", len(def.Copies())+1)
+			fmt.Println(head)
+			fmt.Println(strings.Repeat("-", len(head)-1))
+			sum.Print(def)
 		}
 	}
 }

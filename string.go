@@ -26,10 +26,17 @@ func (a *String) Example(v interface{}) Deducer {
 	}
 }
 
-func (a *String) Hash(dh DedupHash) uint64 {
-	hash := a.dedBase.startHash(JsonString)
+func (s *String) Hash(dh DedupHash) uint64 {
+	hash := s.dedBase.startHash(JsonString)
+	if s.cfg.DedupString&DedupStringEmpty != 0 {
+		if s.stats[""] > 0 {
+			hash.WriteByte(1)
+		} else {
+			hash.WriteByte(0)
+		}
+	}
 	res := hash.Sum64()
-	dh[res] = addNotEqual(dh[res], a)
+	dh[res] = addNotEqual(dh[res], s)
 	return res
 }
 
@@ -38,9 +45,13 @@ func (s *String) Equal(d Deducer) bool {
 	if !ok {
 		return false
 	}
-	res := s.dedBase.Equal(&b.dedBase)
-	// TODO consider samples for equality (-> .Hash())
-	return res
+	if !s.dedBase.Equal(&b.dedBase) {
+		return false
+	}
+	if se, de := s.stats[""], b.stats[""]; (se > 0) != (de > 0) {
+		return false
+	}
+	return true
 }
 
 func (s *String) super() *dedBase { return &s.dedBase }
