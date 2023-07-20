@@ -49,6 +49,32 @@ const (
 	dangling
 )
 
+type PrefixElement int
+
+func Root(idx, len int) PrefixElement {
+	switch {
+	case idx+1 >= len:
+		return Last
+	case idx <= 0:
+		return First
+	}
+	return Next
+}
+
+func Branch(idx, len int) PrefixElement {
+	if idx+1 >= len {
+		return Last
+	}
+	return Next
+}
+
+const (
+	First PrefixElement = iota
+	Next
+	Cont
+	Last
+)
+
 type Prefix struct {
 	Style  *Style
 	prefix []mode
@@ -78,6 +104,20 @@ func (p *Prefix) Ascend(up int) *Prefix {
 		up--
 	}
 	return p
+}
+
+func (p *Prefix) String(e PrefixElement, s *Style) string {
+	switch e {
+	case First:
+		return p.First(s)
+	case Next:
+		return p.Next(s)
+	case Cont:
+		return p.Cont(s)
+	case Last:
+		return p.Last(s)
+	}
+	return ""
 }
 
 func (p *Prefix) First(s *Style) string {
