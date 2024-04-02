@@ -7,10 +7,12 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"git.fractalqb.de/fractalqb/jsum"
 	"git.fractalqb.de/fractalqb/jsum/treew"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -24,9 +26,10 @@ var (
 	fTypes     bool
 )
 
-func read(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
+type decoder interface{ Decode(interface{}) error }
+
+func read(dec decoder, d jsum.Deducer) (jsum.Deducer, int) {
 	samples := 0
-	dec := json.NewDecoder(rd)
 	for {
 		var jv interface{}
 		err := dec.Decode(&jv)
@@ -44,11 +47,25 @@ func read(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
 	}
 }
 
+func readJSON(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
+	dec := json.NewDecoder(rd)
+	return read(dec, d)
+}
+
+func readYAML(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
+	dec := yaml.NewDecoder(rd)
+	return read(dec, d)
+}
+
 func readFile(name string, d jsum.Deducer) (jsum.Deducer, int) {
 	rd, _ := os.Open(name)
 	defer rd.Close()
 	log.Println("read file", name)
-	return read(rd, d)
+	switch filepath.Ext(name) {
+	case ".yml", ".yaml":
+		return readYAML(rd, d)
+	}
+	return readJSON(rd, d)
 }
 
 func main() {
@@ -64,7 +81,7 @@ func main() {
 			samples += n
 		}
 	} else {
-		scm, samples = read(os.Stdin, scm)
+		scm, samples = readJSON(os.Stdin, scm)
 	}
 	var tstyle *treew.Style
 	switch fTreeStyle {
