@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"hash/maphash"
 	"reflect"
+	"time"
 )
 
 type JsonType int
@@ -41,6 +42,8 @@ func JsonTypeOf(v interface{}) JsonType {
 		return JsonNumber
 	case bool:
 		return JsonBoolean
+	case time.Time:
+		return JsonString
 	case map[string]interface{}:
 		return JsonObject
 	case []interface{}:

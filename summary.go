@@ -65,6 +65,8 @@ func (s *Summary) printIndet(scm Deducer, last bool) (err error) {
 		} else {
 			io.WriteString(s.w, "[???]\n")
 		}
+	case Invalid:
+		fmt.Fprintf(s.w, "<INVALID: %s>\n", ded)
 	default:
 		err = fmt.Errorf("unsupported deducer type %T", scm)
 	}
@@ -89,22 +91,36 @@ func (s *Summary) str(n *String) error {
 	} else {
 		fmt.Fprint(s.w, "String")
 	}
-	if minLen == maxLen {
-		fmt.Fprintf(s.w, " len:%d\n", minLen)
-	} else {
-		fmt.Fprintf(s.w, " len:%d..%d\n", minLen, maxLen)
+	switch n.format {
+	case DateTimeFormat:
+		fmt.Fprintln(s.w, " format=date-time")
+	default:
+		if minLen == maxLen {
+			fmt.Fprintf(s.w, " len:%d\n", minLen)
+		} else {
+			fmt.Fprintf(s.w, " len:%d..%d\n", minLen, maxLen)
+		}
 	}
 	sort.Strings(strs)
+	switch s.StringMax {
+	case 0:
+		return nil
+	case 1:
+		str := strs[0]
+		s.tpf.Descend()
+		fmt.Fprintf(s.w, "%s%d × %q", s.tpf.Last(nil), n.stats[str], str)
+		if len(strs) > 1 {
+			fmt.Fprintln(s.w, "…")
+		} else {
+			fmt.Fprintln(s.w)
+		}
+		s.tpf.Ascend(1)
+		return nil
+	}
 	s.tpf.Descend()
 	if len(strs) > s.StringMax {
-		h := s.StringMax / 2
-		t := s.StringMax - h - 1
-		if h < 1 {
-			h = 1
-		}
-		if t < 1 {
-			t = 1
-		}
+		t := s.StringMax / 2
+		h := s.StringMax - t
 		var iw int
 		for _, str := range strs[:h] {
 			iw = maxIntWidth(iw, n.stats[str])
@@ -112,7 +128,7 @@ func (s *Summary) str(n *String) error {
 		for _, str := range strs[len(strs)-t:] {
 			iw = maxIntWidth(iw, n.stats[str])
 		}
-		form := fmt.Sprintf("%%s%%%dd x \"%%s\"\n", iw)
+		form := fmt.Sprintf("%%s%%%dd x %%q\n", iw)
 		for _, str := range strs[:h] {
 			fmt.Fprintf(s.w, form, s.tpf.Next(nil), n.stats[str], str)
 		}
@@ -135,7 +151,7 @@ func (s *Summary) str(n *String) error {
 		for _, n := range n.stats {
 			iw = maxIntWidth(iw, n)
 		}
-		form := fmt.Sprintf("%%s%%%dd x \"%%s\"\n", iw)
+		form := fmt.Sprintf("%%s%%%dd x %%q\n", iw)
 		for i, str := range strs {
 			var pf string
 			if i == len(strs)-1 {
@@ -195,7 +211,14 @@ func (s *Summary) object(o *Object) error {
 		}
 		m := o.mbrs[a]
 		if m.occurence < o.count {
-			fmt.Fprintf(s.w, "%s#%-2d \"%s\" in %d / %d:\n", pf, i+1, a, m.occurence, o.count)
+			fmt.Fprintf(s.w, "%s#%-2d \"%s\" optional (%d/%d %.0f%%):\n",
+				pf,
+				i+1,
+				a,
+				m.occurence,
+				o.count,
+				100*float64(m.occurence)/float64(o.count),
+			)
 		} else {
 			fmt.Fprintf(s.w, "%s#%-2d \"%s\" mandatory (%dx):\n", pf, i+1, a, m.occurence)
 		}

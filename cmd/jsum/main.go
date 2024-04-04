@@ -47,41 +47,50 @@ func read(dec decoder, d jsum.Deducer) (jsum.Deducer, int) {
 	}
 }
 
-func readJSON(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
-	dec := json.NewDecoder(rd)
-	return read(dec, d)
-}
-
-func readYAML(rd io.Reader, d jsum.Deducer) (jsum.Deducer, int) {
-	dec := yaml.NewDecoder(rd)
-	return read(dec, d)
-}
-
-func readFile(name string, d jsum.Deducer) (jsum.Deducer, int) {
-	rd, _ := os.Open(name)
+func readFile(name string, d jsum.Deducer) (_ jsum.Deducer, n int, err error) {
+	rd, err := os.Open(name)
+	if err != nil {
+		return nil, 0, err
+	}
 	defer rd.Close()
 	log.Println("read file", name)
 	switch filepath.Ext(name) {
 	case ".yml", ".yaml":
-		return readYAML(rd, d)
+		dec := yaml.NewDecoder(rd)
+		d, n = read(dec, d)
+		return d, n, nil
 	}
-	return readJSON(rd, d)
+	dec := json.NewDecoder(rd)
+	d, n = read(dec, d)
+	return d, n, nil
+}
+
+func usage() {
+	w := flag.CommandLine.Output()
+	fmt.Fprintln(w, `Usage: jsum [flags] <JSON/YAML file>...
+FLAGS:`)
+	flag.PrintDefaults()
 }
 
 func main() {
+	flag.Usage = usage
 	flag.StringVar(&fTreeStyle, "tree", "draw", "Select style for tree drawing from: ascii, draw, items")
 	flag.IntVar(&fStrMax, "strings", fStrMax, "Max number of strings values to show per property")
 	flag.BoolVar(&fTypes, "types", fTypes, "Find reused types (experimental)")
 	flag.Parse()
 	var scm jsum.Deducer = jsum.NewUnknown(&cfg)
 	var samples, n int
+	var err error
 	if len(flag.Args()) > 0 {
 		for _, arg := range flag.Args() {
-			scm, n = readFile(arg, scm)
+			if scm, n, err = readFile(arg, scm); err != nil {
+				log.Fatal(err)
+			}
 			samples += n
 		}
 	} else {
-		scm, samples = readJSON(os.Stdin, scm)
+		dec := json.NewDecoder(os.Stdin)
+		scm, samples = read(dec, scm)
 	}
 	var tstyle *treew.Style
 	switch fTreeStyle {

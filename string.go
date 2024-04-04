@@ -1,8 +1,17 @@
 package jsum
 
+import "time"
+
+type Format int
+
+const (
+	DateTimeFormat = 1 + iota
+)
+
 type String struct {
 	dedBase
-	stats map[string]int
+	stats  map[string]int
+	format Format
 }
 
 func NewString(cfg *Config, null bool) *String {
@@ -17,13 +26,36 @@ func (a *String) Accepts(v interface{}) bool { return JsonTypeOf(v) == JsonStrin
 func (a *String) Example(v interface{}) Deducer {
 	vjt := JsonTypeOf(v)
 	if vjt == JsonString {
-		a.stats[v.(string)]++
+		switch v := v.(type) {
+		case string:
+			if fmt := stringFormat(v); fmt == 0 {
+				a.format = 0
+			} else if len(a.stats) == 0 {
+				a.format = fmt
+			} else if fmt != a.format {
+				a.format = 0
+			}
+			a.stats[v]++
+		case time.Time:
+			if len(a.stats) == 0 {
+				a.format = DateTimeFormat
+			}
+			s := v.Format(time.RFC3339)
+			a.stats[s]++
+		}
 		return a
 	}
 	return &Union{
 		dedBase:  dedBase{cfg: a.cfg},
 		variants: []Deducer{a, Deduce(a.cfg, v)},
 	}
+}
+
+func stringFormat(s string) Format {
+	if _, err := time.Parse(time.RFC3339, s); err == nil {
+		return DateTimeFormat
+	}
+	return 0
 }
 
 func (s *String) Hash(dh DedupHash) uint64 {
