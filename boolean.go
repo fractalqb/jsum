@@ -5,9 +5,9 @@ type Boolean struct {
 	tNo, fNo int
 }
 
-func (a *Boolean) Accepts(v interface{}) bool { return JsonTypeOf(v) == JsonBoolean }
+func (a *Boolean) Accepts(v any) bool { return JsonTypeOf(v) == JsonBoolean }
 
-func (a *Boolean) Example(v interface{}) Deducer {
+func (a *Boolean) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	if vjt == JsonBoolean {
 		if v.(bool) {

@@ -8,7 +8,7 @@ type Array struct {
 	elem           Deducer
 }
 
-func newArrJson(cfg *Config, a []interface{}) *Array {
+func newArrJson(cfg *Config, a []any) *Array {
 	res := &Array{
 		dedBase: dedBase{
 			cfg:  cfg,
@@ -24,11 +24,11 @@ func newArrJson(cfg *Config, a []interface{}) *Array {
 	return res
 }
 
-func (a *Array) Accepts(v interface{}) bool {
+func (a *Array) Accepts(v any) bool {
 	return JsonTypeOf(v) == JsonArray
 }
 
-func (a *Array) Example(v interface{}) Deducer {
+func (a *Array) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
@@ -36,7 +36,7 @@ func (a *Array) Example(v interface{}) Deducer {
 		return a
 	case JsonArray:
 		switch av := v.(type) {
-		case []interface{}:
+		case []any:
 			if l := len(av); l < a.minLen {
 				a.minLen = l
 			} else if l > a.maxLen {

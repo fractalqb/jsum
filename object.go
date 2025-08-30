@@ -16,7 +16,7 @@ type member struct {
 	ded       Deducer
 }
 
-func newObjJson(cfg *Config, m map[string]interface{}) *Object {
+func newObjJson(cfg *Config, m map[string]any) *Object {
 	res := &Object{
 		dedBase: dedBase{cfg: cfg},
 		mbrs:    make(map[string]member),
@@ -28,11 +28,11 @@ func newObjJson(cfg *Config, m map[string]interface{}) *Object {
 	return res
 }
 
-func (o *Object) Accepts(v interface{}) bool {
+func (o *Object) Accepts(v any) bool {
 	return JsonTypeOf(v) == JsonObject
 }
 
-func (o *Object) Example(v interface{}) Deducer {
+func (o *Object) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
@@ -41,7 +41,7 @@ func (o *Object) Example(v interface{}) Deducer {
 	case JsonObject:
 		o.count++
 		switch vo := v.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			o.mergeMap(vo)
 		}
 		// TODO more Object types?
@@ -50,7 +50,7 @@ func (o *Object) Example(v interface{}) Deducer {
 	return newAny(o.cfg, o.null)
 }
 
-func (o *Object) mergeMap(m map[string]interface{}) {
+func (o *Object) mergeMap(m map[string]any) {
 	for k, v := range m {
 		if m, ok := o.mbrs[k]; ok {
 			o.mbrs[k] = member{occurence: m.occurence + 1, ded: m.ded.Example(v)}

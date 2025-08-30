@@ -10,7 +10,7 @@ type Union struct {
 	variants []Deducer
 }
 
-func (u *Union) Accepts(v interface{}) bool {
+func (u *Union) Accepts(v any) bool {
 	for _, d := range u.variants {
 		if d.Accepts(v) {
 			return true
@@ -19,7 +19,7 @@ func (u *Union) Accepts(v interface{}) bool {
 	return false
 }
 
-func (u *Union) Example(v interface{}) Deducer {
+func (u *Union) Example(v any) Deducer {
 	for _, d := range u.variants {
 		if d.Accepts(v) {
 			return u

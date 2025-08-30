@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"git.fractalqb.de/fractalqb/jsum"
-	"git.fractalqb.de/fractalqb/jsum/treew"
+	"git.fractalqb.de/fractalqb/tetrta"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,12 +26,12 @@ var (
 	fTypes     bool
 )
 
-type decoder interface{ Decode(interface{}) error }
+type decoder interface{ Decode(any) error }
 
 func read(dec decoder, d jsum.Deducer) (jsum.Deducer, int) {
 	samples := 0
 	for {
-		var jv interface{}
+		var jv any
 		err := dec.Decode(&jv)
 		switch {
 		case err == io.EOF:
@@ -92,14 +92,14 @@ func main() {
 		dec := json.NewDecoder(os.Stdin)
 		scm, samples = read(dec, scm)
 	}
-	var tstyle *treew.Style
+	var tstyle *tetrta.TreeStyle
 	switch fTreeStyle {
 	case "a", "ascii":
-		tstyle = treew.ASCIIStyle()
+		tstyle = tetrta.ASCIITree()
 	case "d", "draw":
-		tstyle = treew.BoxDrawStyle()
+		tstyle = tetrta.BoxDrawTree()
 	case "i", "items":
-		tstyle = treew.ItemStyle()
+		tstyle = tetrta.ItemTree()
 	}
 	head := fmt.Sprintf("Deduced from %d samples:", samples)
 	fmt.Println(head)

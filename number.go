@@ -12,11 +12,11 @@ type Number struct {
 	hadFrac  bool
 }
 
-func (nr *Number) Accepts(v interface{}) bool {
+func (nr *Number) Accepts(v any) bool {
 	return JsonTypeOf(v) == JsonNumber
 }
 
-func (nr *Number) Example(v interface{}) Deducer {
+func (nr *Number) Example(v any) Deducer {
 	jvt := JsonTypeOf(v)
 	switch jvt {
 	case 0:
@@ -111,7 +111,7 @@ func (nr *Number) Equal(d Deducer) bool {
 
 func (nr *Number) super() *dedBase { return &nr.dedBase }
 
-func (nr *Number) updateFloat(v interface{}) float64 {
+func (nr *Number) updateFloat(v any) float64 {
 	x := asNumber(v)
 	switch {
 	case math.IsNaN(x):
@@ -125,7 +125,7 @@ func (nr *Number) updateFloat(v interface{}) float64 {
 	return x
 }
 
-func asNumber(v interface{}) float64 {
+func asNumber(v any) float64 {
 	switch n := v.(type) {
 	case float64:
 		return n

@@ -11,9 +11,9 @@ func newAny(cfg *Config, nullable bool) *Any {
 	}
 }
 
-func (*Any) Accepts(v interface{}) bool { return true }
+func (*Any) Accepts(v any) bool { return true }
 
-func (a *Any) Example(v interface{}) Deducer { return a }
+func (a *Any) Example(v any) Deducer { return a }
 
 func (a *Any) Hash(dh DedupHash) uint64 {
 	hash := a.dedBase.startHash(jsonAny)

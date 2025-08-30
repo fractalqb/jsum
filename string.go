@@ -21,9 +21,9 @@ func NewString(cfg *Config, null bool) *String {
 	}
 }
 
-func (a *String) Accepts(v interface{}) bool { return JsonTypeOf(v) == JsonString }
+func (a *String) Accepts(v any) bool { return JsonTypeOf(v) == JsonString }
 
-func (a *String) Example(v interface{}) Deducer {
+func (a *String) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	if vjt == JsonString {
 		switch v := v.(type) {

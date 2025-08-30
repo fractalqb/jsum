@@ -8,9 +8,9 @@ func NewUnknown(cfg *Config) *Unknown {
 	return &Unknown{dedBase: dedBase{cfg: cfg}}
 }
 
-func (a *Unknown) Accepts(v interface{}) bool { return true }
+func (a *Unknown) Accepts(v any) bool { return true }
 
-func (a *Unknown) Example(v interface{}) Deducer {
+func (a *Unknown) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
@@ -28,12 +28,12 @@ func (a *Unknown) Example(v interface{}) Deducer {
 		return &Boolean{dedBase: dedBase{cfg: a.cfg}}
 	case JsonObject:
 		switch o := v.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			return newObjJson(a.cfg, o)
 		}
 	case JsonArray:
 		switch av := v.(type) {
-		case []interface{}:
+		case []any:
 			return newArrJson(a.cfg, av)
 		}
 	}

@@ -30,7 +30,7 @@ func (jt JsonType) Scalar() bool {
 	return jt >= JsonString && jt <= JsonBoolean
 }
 
-func JsonTypeOf(v interface{}) JsonType {
+func JsonTypeOf(v any) JsonType {
 	switch v.(type) {
 	case nil:
 		return 0
@@ -44,9 +44,9 @@ func JsonTypeOf(v interface{}) JsonType {
 		return JsonBoolean
 	case time.Time:
 		return JsonString
-	case map[string]interface{}:
+	case map[string]any:
 		return JsonObject
-	case []interface{}:
+	case []any:
 		return JsonArray
 	}
 	rty := reflect.TypeOf(v)
@@ -73,8 +73,8 @@ func (dh DedupHash) ReusedTypes() (res []Deducer) {
 }
 
 type Deducer interface {
-	Accepts(v interface{}) bool
-	Example(v interface{}) Deducer
+	Accepts(v any) bool
+	Example(v any) Deducer
 	Nullable() bool
 	Hash(dh DedupHash) uint64
 	Copies() []Deducer
@@ -109,7 +109,7 @@ func (lhs *dedBase) Equal(rhs *dedBase) bool {
 	return lhs.null == rhs.null
 }
 
-func Deduce(cfg *Config, v interface{}) Deducer {
+func Deduce(cfg *Config, v any) Deducer {
 	tmp := Unknown{dedBase: dedBase{cfg: cfg}}
 	return tmp.Example(v)
 }

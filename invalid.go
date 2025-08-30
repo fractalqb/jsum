@@ -4,9 +4,9 @@ type Invalid struct {
 	error
 }
 
-func (Invalid) Accepts(_ interface{}) bool { return false }
+func (Invalid) Accepts(_ any) bool { return false }
 
-func (i Invalid) Example(v interface{}) Deducer { return i }
+func (i Invalid) Example(v any) Deducer { return i }
 
 func (Invalid) Nullable() bool { return false }
 

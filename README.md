@@ -35,7 +35,7 @@ The tools I found were focused on JSON Schema, so I rolled my own…
 
 - In principle the algorithm would also work in a streaming mode. But the
   current implementation depends on complete JSON values to be read into a Go
-  `interface{}`. Quite standard for Go! It does not really hurt for the files
+  `any`. Quite standard for Go! It does not really hurt for the files
   I'm currently working with, but… – This could be improved
 
 - There are no tools to control the level of detail. – This cloud be improved

@@ -7,17 +7,17 @@ import (
 	"sort"
 	"strconv"
 
-	"git.fractalqb.de/fractalqb/jsum/treew"
+	"git.fractalqb.de/fractalqb/tetrta"
 )
 
 type SummaryConfig struct {
-	TreeStyle *treew.Style
+	TreeStyle *tetrta.TreeStyle
 	StringMax int
 }
 
 type Summary struct {
-	w   io.Writer
-	tpf treew.Prefix
+	w    io.Writer
+	tree tetrta.Tree
 	SummaryConfig
 }
 
@@ -25,7 +25,7 @@ func NewSummary(w io.Writer, cfg *SummaryConfig) *Summary {
 	res := &Summary{w: w}
 	if cfg != nil {
 		res.SummaryConfig = *cfg
-		res.tpf.Style = cfg.TreeStyle
+		res.tree.Style = cfg.TreeStyle
 	}
 	return res
 }
@@ -36,9 +36,9 @@ func (s *Summary) Print(scm Deducer) error {
 
 func (s *Summary) printIndet(scm Deducer, last bool) (err error) {
 	if last {
-		io.WriteString(s.w, s.tpf.Last(nil))
+		io.WriteString(s.w, s.tree.Last(nil))
 	} else {
-		io.WriteString(s.w, s.tpf.Next(nil))
+		io.WriteString(s.w, s.tree.Next(nil))
 	}
 	switch ded := scm.(type) {
 	case *String:
@@ -107,17 +107,17 @@ func (s *Summary) str(n *String) error {
 		return nil
 	case 1:
 		str := strs[0]
-		s.tpf.Descend()
-		fmt.Fprintf(s.w, "%s%d × %q", s.tpf.Last(nil), n.stats[str], str)
+		s.tree.Descend()
+		fmt.Fprintf(s.w, "%s%d × %q", s.tree.Last(nil), n.stats[str], str)
 		if len(strs) > 1 {
 			fmt.Fprintln(s.w, "…")
 		} else {
 			fmt.Fprintln(s.w)
 		}
-		s.tpf.Ascend(1)
+		s.tree.Ascend(1)
 		return nil
 	}
-	s.tpf.Descend()
+	s.tree.Descend()
 	if len(strs) > s.StringMax {
 		t := s.StringMax / 2
 		h := s.StringMax - t
@@ -130,19 +130,19 @@ func (s *Summary) str(n *String) error {
 		}
 		form := fmt.Sprintf("%%s%%%dd x %%q\n", iw)
 		for _, str := range strs[:h] {
-			fmt.Fprintf(s.w, form, s.tpf.Next(nil), n.stats[str], str)
+			fmt.Fprintf(s.w, form, s.tree.Next(nil), n.stats[str], str)
 		}
 		fmt.Fprintf(s.w, "%s... %d ...\n",
-			s.tpf.Cont(nil),
+			s.tree.Cont(nil),
 			len(strs)-h-t,
 		)
 		strs = strs[len(strs)-t:]
 		for i, str := range strs {
 			var pf string
 			if i == len(strs)-1 {
-				pf = s.tpf.Last(nil)
+				pf = s.tree.Last(nil)
 			} else {
-				pf = s.tpf.Next(nil)
+				pf = s.tree.Next(nil)
 			}
 			fmt.Fprintf(s.w, form, pf, n.stats[str], str)
 		}
@@ -155,14 +155,14 @@ func (s *Summary) str(n *String) error {
 		for i, str := range strs {
 			var pf string
 			if i == len(strs)-1 {
-				pf = s.tpf.Last(nil)
+				pf = s.tree.Last(nil)
 			} else {
-				pf = s.tpf.Next(nil)
+				pf = s.tree.Next(nil)
 			}
 			fmt.Fprintf(s.w, form, pf, n.stats[str], str)
 		}
 	}
-	s.tpf.Ascend(1)
+	s.tree.Ascend(1)
 	return nil
 }
 
@@ -201,13 +201,13 @@ func (s *Summary) object(o *Object) error {
 		nms = append(nms, a)
 	}
 	sort.Strings(nms)
-	s.tpf.Descend()
+	s.tree.Descend()
 	for i, a := range nms {
 		var pf string
 		if i == len(nms)-1 {
-			pf = s.tpf.Last(nil)
+			pf = s.tree.Last(nil)
 		} else {
-			pf = s.tpf.Next(nil)
+			pf = s.tree.Next(nil)
 		}
 		m := o.mbrs[a]
 		if m.occurence < o.count {
@@ -222,13 +222,13 @@ func (s *Summary) object(o *Object) error {
 		} else {
 			fmt.Fprintf(s.w, "%s#%-2d \"%s\" mandatory (%dx):\n", pf, i+1, a, m.occurence)
 		}
-		s.tpf.Descend()
+		s.tree.Descend()
 		if err := s.printIndet(m.ded, true); err != nil {
 			return err
 		}
-		s.tpf.Ascend(1)
+		s.tree.Ascend(1)
 	}
-	s.tpf.Ascend(1)
+	s.tree.Ascend(1)
 	return nil
 }
 
@@ -244,20 +244,20 @@ func (s *Summary) array(a *Array) error {
 	} else {
 		fmt.Fprintf(s.w, "Array of %s:\n", lens)
 	}
-	s.tpf.Descend()
-	defer s.tpf.Ascend(1)
+	s.tree.Descend()
+	defer s.tree.Ascend(1)
 	return s.printIndet(a.elem, true)
 }
 
 func (s *Summary) union(u *Union) error {
 	fmt.Fprintf(s.w, "Union of %d types:\n", len(u.variants))
-	s.tpf.Descend()
+	s.tree.Descend()
 	for i, d := range u.variants {
 		if err := s.printIndet(d, i == len(u.variants)-1); err != nil {
 			return err
 		}
 	}
-	s.tpf.Ascend(1)
+	s.tree.Ascend(1)
 	return nil
 }
 
