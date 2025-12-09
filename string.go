@@ -14,9 +14,9 @@ type String struct {
 	format Format
 }
 
-func NewString(cfg *Config, null bool) *String {
+func NewString(cfg *Config, nulln int) *String {
 	return &String{
-		dedBase: dedBase{cfg: cfg, null: null},
+		dedBase: dedBase{cfg: cfg, null: nulln},
 		stats:   make(map[string]int),
 	}
 }

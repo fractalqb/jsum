@@ -36,7 +36,7 @@ func (o *Object) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
-		o.null = true
+		o.null++
 		return o
 	case JsonObject:
 		o.count++

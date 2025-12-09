@@ -54,16 +54,16 @@ func (s *Summary) printIndet(scm Deducer, last bool) (err error) {
 	case *Union:
 		err = s.union(ded)
 	case *Any:
-		if ded.Nullable() {
-			io.WriteString(s.w, "Any\n")
+		if ns := ded.Nulls(); ns > 0 {
+			fmt.Fprintf(s.w, "[Any %d×null]\n", ns)
 		} else {
-			io.WriteString(s.w, "[Any]\n")
+			io.WriteString(s.w, "Any\n")
 		}
 	case *Unknown:
-		if ded.Nullable() {
-			io.WriteString(s.w, "???\n")
+		if ns := ded.Nulls(); ns > 0 {
+			fmt.Fprintf(s.w, "[??? %d×null]\n", ns)
 		} else {
-			io.WriteString(s.w, "[???]\n")
+			io.WriteString(s.w, "???\n")
 		}
 	case Invalid:
 		fmt.Fprintf(s.w, "<INVALID: %s>\n", ded)
@@ -86,8 +86,8 @@ func (s *Summary) str(n *String) error {
 			maxLen = l
 		}
 	}
-	if n.Nullable() {
-		fmt.Fprint(s.w, "[String]")
+	if ns := n.Nulls(); ns > 0 {
+		fmt.Fprintf(s.w, "[String %d×null]", ns)
 	} else {
 		fmt.Fprint(s.w, "String")
 	}
@@ -167,11 +167,11 @@ func (s *Summary) str(n *String) error {
 }
 
 func (s *Summary) bool(n *Boolean) error {
-	f := "Boolean true:%d / false:%d\n"
-	if n.Nullable() {
-		f = "[Boolean] true:%d / false:%d\n"
+	if ns := n.Nulls(); ns > 0 {
+		fmt.Fprintf(s.w, "[Boolean %d×null] true:%d / false:%d\n", ns, n.tNo, n.fNo)
+	} else {
+		fmt.Fprintf(s.w, "Boolean true:%d / false:%d\n", n.tNo, n.fNo)
 	}
-	fmt.Fprintf(s.w, f, n.tNo, n.fNo)
 	return nil
 }
 
@@ -186,8 +186,8 @@ func (s *Summary) number(n *Number) error {
 	} else {
 		sum = fmt.Sprintf("Integer %d–%d", int64(n.min), int64(n.max))
 	}
-	if n.Nullable() {
-		fmt.Fprintf(s.w, "[%s]\n", sum)
+	if ns := n.Nulls(); ns > 0 {
+		fmt.Fprintf(s.w, "[%s %d×null]\n", sum, ns)
 	} else {
 		fmt.Fprintf(s.w, "%s\n", sum)
 	}
@@ -195,7 +195,11 @@ func (s *Summary) number(n *Number) error {
 }
 
 func (s *Summary) object(o *Object) error {
-	fmt.Fprintf(s.w, "Object with %d members:\n", len(o.mbrs))
+	if ns := o.Nulls(); ns > 0 {
+		fmt.Fprintf(s.w, "[Object %d×null] with %d members:\n", ns, len(o.mbrs))
+	} else {
+		fmt.Fprintf(s.w, "Object with %d members:\n", len(o.mbrs))
+	}
 	nms := make([]string, 0, len(o.mbrs))
 	for a := range o.mbrs {
 		nms = append(nms, a)
@@ -210,18 +214,17 @@ func (s *Summary) object(o *Object) error {
 			pf = s.tree.Next(nil)
 		}
 		m := o.mbrs[a]
+		fmt.Fprintf(s.w, "%s#%-2d \"%s\" ", pf, i+1, a)
 		if m.occurence < o.count {
-			fmt.Fprintf(s.w, "%s#%-2d \"%s\" optional (%d/%d %.0f%%):\n",
-				pf,
-				i+1,
-				a,
+			fmt.Fprintf(s.w, "optional (%d/%d %.0f%%)",
 				m.occurence,
 				o.count,
 				100*float64(m.occurence)/float64(o.count),
 			)
 		} else {
-			fmt.Fprintf(s.w, "%s#%-2d \"%s\" mandatory (%dx):\n", pf, i+1, a, m.occurence)
+			fmt.Fprintf(s.w, "mandatory (%d×)", m.occurence)
 		}
+		fmt.Println(":")
 		s.tree.Descend()
 		if err := s.printIndet(m.ded, true); err != nil {
 			return err
@@ -239,8 +242,8 @@ func (s *Summary) array(a *Array) error {
 	} else {
 		lens = fmt.Sprintf("%d..%d", a.minLen, a.maxLen)
 	}
-	if a.Nullable() {
-		fmt.Fprintf(s.w, "[Array] of %s:\n", lens)
+	if ns := a.Nulls(); ns > 0 {
+		fmt.Fprintf(s.w, "[Array %d×null] of %s:\n", ns, lens)
 	} else {
 		fmt.Fprintf(s.w, "Array of %s:\n", lens)
 	}

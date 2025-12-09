@@ -14,7 +14,7 @@ func (a *Unknown) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
-		a.null = true
+		a.null++
 		return a
 	case JsonString:
 		str := NewString(a.cfg, a.null)
@@ -25,7 +25,8 @@ func (a *Unknown) Example(v any) Deducer {
 		num.min, num.max = x, x
 		return num
 	case JsonBoolean:
-		return &Boolean{dedBase: dedBase{cfg: a.cfg}}
+		b := &Boolean{dedBase: dedBase{cfg: a.cfg}}
+		return b.Example(v)
 	case JsonObject:
 		switch o := v.(type) {
 		case map[string]any:

@@ -2,18 +2,23 @@ package jsum
 
 type Any struct{ dedBase }
 
-func newAny(cfg *Config, nullable bool) *Any {
+func newAny(cfg *Config, nulln int) *Any {
 	return &Any{
 		dedBase{
 			cfg:  cfg,
-			null: nullable,
+			null: nulln,
 		},
 	}
 }
 
 func (*Any) Accepts(v any) bool { return true }
 
-func (a *Any) Example(v any) Deducer { return a }
+func (a *Any) Example(v any) Deducer {
+	if a == nil {
+		a.null++
+	}
+	return a
+}
 
 func (a *Any) Hash(dh DedupHash) uint64 {
 	hash := a.dedBase.startHash(jsonAny)

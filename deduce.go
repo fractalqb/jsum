@@ -75,7 +75,7 @@ func (dh DedupHash) ReusedTypes() (res []Deducer) {
 type Deducer interface {
 	Accepts(v any) bool
 	Example(v any) Deducer
-	Nullable() bool
+	Nulls() int
 	Hash(dh DedupHash) uint64
 	Copies() []Deducer
 	Equal(d Deducer) bool
@@ -84,12 +84,12 @@ type Deducer interface {
 
 type dedBase struct {
 	cfg    *Config
-	null   bool
+	null   int
 	orig   Deducer
 	copies []Deducer
 }
 
-func (d *dedBase) Nullable() bool { return d.null }
+func (d *dedBase) Nulls() int { return d.null }
 
 func (d *dedBase) Copies() []Deducer { return d.copies }
 
@@ -97,7 +97,7 @@ func (d *dedBase) startHash(jt JsonType) *maphash.Hash {
 	h := new(maphash.Hash)
 	h.SetSeed(hashSeed)
 	binary.Write(h, hashEndian, int32(jt))
-	if d.null {
+	if d.null > 0 {
 		h.WriteByte(0)
 	} else {
 		h.WriteByte(1)
@@ -110,7 +110,7 @@ func (lhs *dedBase) Equal(rhs *dedBase) bool {
 }
 
 func Deduce(cfg *Config, v any) Deducer {
-	tmp := Unknown{dedBase: dedBase{cfg: cfg}}
+	tmp := *NewUnknown(cfg)
 	return tmp.Example(v)
 }
 

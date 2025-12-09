@@ -10,13 +10,13 @@ type Array struct {
 
 func newArrJson(cfg *Config, a []any) *Array {
 	res := &Array{
-		dedBase: dedBase{
-			cfg:  cfg,
-			null: a == nil,
-		},
-		minLen: len(a),
-		maxLen: len(a),
-		elem:   NewUnknown(cfg),
+		dedBase: dedBase{cfg: cfg},
+		minLen:  len(a),
+		maxLen:  len(a),
+		elem:    NewUnknown(cfg),
+	}
+	if a == nil {
+		res.null = 1
 	}
 	for _, e := range a {
 		res.elem = res.elem.Example(e)
@@ -32,7 +32,7 @@ func (a *Array) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
-		a.null = true
+		a.null++
 		return a
 	case JsonArray:
 		switch av := v.(type) {

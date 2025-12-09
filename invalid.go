@@ -8,7 +8,7 @@ func (Invalid) Accepts(_ any) bool { return false }
 
 func (i Invalid) Example(v any) Deducer { return i }
 
-func (Invalid) Nullable() bool { return false }
+func (Invalid) Nulls() int { return -1 }
 
 func (Invalid) Hash(dh DedupHash) uint64 { return 0 }
 

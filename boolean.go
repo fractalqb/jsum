@@ -9,7 +9,11 @@ func (a *Boolean) Accepts(v any) bool { return JsonTypeOf(v) == JsonBoolean }
 
 func (a *Boolean) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
-	if vjt == JsonBoolean {
+	switch vjt {
+	case 0:
+		a.null++
+		return a
+	case JsonBoolean:
 		if v.(bool) {
 			a.tNo++
 		} else {

@@ -20,7 +20,7 @@ func (nr *Number) Example(v any) Deducer {
 	jvt := JsonTypeOf(v)
 	switch jvt {
 	case 0:
-		nr.null = true
+		nr.null++
 	case JsonNumber:
 		x := nr.updateFloat(v)
 		if x < nr.min {
