@@ -14,7 +14,7 @@ func newAny(cfg *Config, nulln int) *Any {
 func (*Any) Accepts(v any) bool { return true }
 
 func (a *Any) Example(v any) Deducer {
-	if a == nil {
+	if v == nil {
 		a.null++
 	}
 	return a

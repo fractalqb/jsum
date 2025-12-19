@@ -7,23 +7,23 @@ import (
 
 type Object struct {
 	dedBase
-	mbrs  map[string]member
-	count int
+	Members map[string]Member
+	Count   int
 }
 
-type member struct {
-	occurence int
-	ded       Deducer
+type Member struct {
+	Occurence int
+	Ded       Deducer
 }
 
 func newObjJson(cfg *Config, m map[string]any) *Object {
 	res := &Object{
 		dedBase: dedBase{cfg: cfg},
-		mbrs:    make(map[string]member),
-		count:   1,
+		Members: make(map[string]Member),
+		Count:   1,
 	}
 	for k, v := range m {
-		res.mbrs[k] = member{occurence: 1, ded: Deduce(cfg, v)}
+		res.Members[k] = Member{Occurence: 1, Ded: Deduce(cfg, v)}
 	}
 	return res
 }
@@ -39,7 +39,7 @@ func (o *Object) Example(v any) Deducer {
 		o.null++
 		return o
 	case JsonObject:
-		o.count++
+		o.Count++
 		switch vo := v.(type) {
 		case map[string]any:
 			o.mergeMap(vo)
@@ -52,10 +52,10 @@ func (o *Object) Example(v any) Deducer {
 
 func (o *Object) mergeMap(m map[string]any) {
 	for k, v := range m {
-		if m, ok := o.mbrs[k]; ok {
-			o.mbrs[k] = member{occurence: m.occurence + 1, ded: m.ded.Example(v)}
+		if m, ok := o.Members[k]; ok {
+			o.Members[k] = Member{Occurence: m.Occurence + 1, Ded: m.Ded.Example(v)}
 		} else {
-			o.mbrs[k] = member{occurence: 1, ded: Deduce(o.cfg, v)}
+			o.Members[k] = Member{Occurence: 1, Ded: Deduce(o.cfg, v)}
 		}
 	}
 }
@@ -65,9 +65,9 @@ func (o *Object) Hash(dh DedupHash) uint64 {
 		n string
 		h uint64
 	}
-	mems := make([]memhash, 0, len(o.mbrs))
-	for n, m := range o.mbrs {
-		mh := m.ded.Hash(dh)
+	mems := make([]memhash, 0, len(o.Members))
+	for n, m := range o.Members {
+		mh := m.Ded.Hash(dh)
 		mems = append(mems, memhash{n, mh})
 	}
 	sort.Slice(mems, func(i, j int) bool { return mems[i].n < mems[j].n })
@@ -85,10 +85,10 @@ func (o *Object) Equal(d Deducer) bool {
 	if !ok {
 		return false
 	}
-	res := o.dedBase.Equal(&b.dedBase) && len(o.mbrs) == len(b.mbrs)
+	res := o.dedBase.Equal(&b.dedBase) && len(o.Members) == len(b.Members)
 	if res {
-		for i := range o.mbrs {
-			if res = o.mbrs[i].ded.Equal(b.mbrs[i].ded); !res {
+		for i := range o.Members {
+			if res = o.Members[i].Ded.Equal(b.Members[i].Ded); !res {
 				break
 			}
 		}

@@ -23,7 +23,7 @@ func (a *Boolean) Example(v any) Deducer {
 	}
 	return &Union{
 		dedBase:  dedBase{cfg: a.cfg},
-		variants: []Deducer{a, Deduce(a.cfg, v)},
+		Variants: []Deducer{a, Deduce(a.cfg, v)},
 	}
 }
 

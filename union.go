@@ -7,11 +7,11 @@ import (
 
 type Union struct {
 	dedBase
-	variants []Deducer
+	Variants []Deducer
 }
 
 func (u *Union) Accepts(v any) bool {
-	for _, d := range u.variants {
+	for _, d := range u.Variants {
 		if d.Accepts(v) {
 			return true
 		}
@@ -20,19 +20,19 @@ func (u *Union) Accepts(v any) bool {
 }
 
 func (u *Union) Example(v any) Deducer {
-	for _, d := range u.variants {
+	for _, d := range u.Variants {
 		if d.Accepts(v) {
 			return u
 		}
 	}
 	// TODO When does Union switch to Any
-	u.variants = append(u.variants, Deduce(u.cfg, v))
+	u.Variants = append(u.Variants, Deduce(u.cfg, v))
 	return u
 }
 
 func (u *Union) Hash(dh DedupHash) uint64 {
-	dhs := make([]uint64, 0, len(u.variants))
-	for _, ed := range u.variants {
+	dhs := make([]uint64, 0, len(u.Variants))
+	for _, ed := range u.Variants {
 		dhs = append(dhs, ed.Hash(dh))
 	}
 	sort.Slice(dhs, func(i, j int) bool { return dhs[i] < dhs[j] })
@@ -50,10 +50,10 @@ func (u *Union) Equal(d Deducer) bool {
 	if !ok {
 		return false
 	}
-	res := u.dedBase.Equal(&b.dedBase) && len(u.variants) == len(b.variants)
+	res := u.dedBase.Equal(&b.dedBase) && len(u.Variants) == len(b.Variants)
 	if res {
-		for i := range b.variants {
-			if res = u.variants[i].Equal(b.variants[i]); !res {
+		for i := range b.Variants {
+			if res = u.Variants[i].Equal(b.Variants[i]); !res {
 				break
 			}
 		}

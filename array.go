@@ -5,7 +5,7 @@ import "encoding/binary"
 type Array struct {
 	dedBase
 	minLen, maxLen int
-	elem           Deducer
+	Elem           Deducer
 }
 
 func newArrJson(cfg *Config, a []any) *Array {
@@ -13,13 +13,13 @@ func newArrJson(cfg *Config, a []any) *Array {
 		dedBase: dedBase{cfg: cfg},
 		minLen:  len(a),
 		maxLen:  len(a),
-		elem:    NewUnknown(cfg),
+		Elem:    NewUnknown(cfg),
 	}
 	if a == nil {
 		res.null = 1
 	}
 	for _, e := range a {
-		res.elem = res.elem.Example(e)
+		res.Elem = res.Elem.Example(e)
 	}
 	return res
 }
@@ -43,7 +43,7 @@ func (a *Array) Example(v any) Deducer {
 				a.maxLen = l
 			}
 			for _, e := range av {
-				a.elem = a.elem.Example(e)
+				a.Elem = a.Elem.Example(e)
 			}
 		}
 		return a
@@ -58,7 +58,7 @@ func (a *Array) Hash(dh DedupHash) uint64 {
 	} else {
 		hash.WriteByte(1)
 	}
-	eh := a.elem.Hash(dh)
+	eh := a.Elem.Hash(dh)
 	binary.Write(hash, hashEndian, eh)
 	res := hash.Sum64()
 	dh[res] = addNotEqual(dh[res], a)
@@ -76,7 +76,7 @@ func (a *Array) Equal(d Deducer) bool {
 	if (a.minLen == 0) != (b.minLen == 0) {
 		return false
 	}
-	return a.elem.Equal(b.elem)
+	return a.Elem.Equal(b.Elem)
 }
 
 func (a *Array) super() *dedBase { return &a.dedBase }

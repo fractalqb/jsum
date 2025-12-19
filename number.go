@@ -35,7 +35,7 @@ func (nr *Number) Example(v any) Deducer {
 	default:
 		return &Union{
 			dedBase:  dedBase{cfg: nr.cfg},
-			variants: []Deducer{nr, Deduce(nr.cfg, v)},
+			Variants: []Deducer{nr, Deduce(nr.cfg, v)},
 		}
 	}
 	return nr

@@ -10,14 +10,14 @@ const (
 
 type String struct {
 	dedBase
-	stats  map[string]int
+	Stats  map[string]int
 	format Format
 }
 
 func NewString(cfg *Config, nulln int) *String {
 	return &String{
 		dedBase: dedBase{cfg: cfg, null: nulln},
-		stats:   make(map[string]int),
+		Stats:   make(map[string]int),
 	}
 }
 
@@ -30,24 +30,24 @@ func (a *String) Example(v any) Deducer {
 		case string:
 			if fmt := stringFormat(v); fmt == 0 {
 				a.format = 0
-			} else if len(a.stats) == 0 {
+			} else if len(a.Stats) == 0 {
 				a.format = fmt
 			} else if fmt != a.format {
 				a.format = 0
 			}
-			a.stats[v]++
+			a.Stats[v]++
 		case time.Time:
-			if len(a.stats) == 0 {
+			if len(a.Stats) == 0 {
 				a.format = DateTimeFormat
 			}
 			s := v.Format(time.RFC3339)
-			a.stats[s]++
+			a.Stats[s]++
 		}
 		return a
 	}
 	return &Union{
 		dedBase:  dedBase{cfg: a.cfg},
-		variants: []Deducer{a, Deduce(a.cfg, v)},
+		Variants: []Deducer{a, Deduce(a.cfg, v)},
 	}
 }
 
@@ -61,7 +61,7 @@ func stringFormat(s string) Format {
 func (s *String) Hash(dh DedupHash) uint64 {
 	hash := s.dedBase.startHash(JsonString)
 	if s.cfg.DedupString&DedupStringEmpty != 0 {
-		if s.stats[""] > 0 {
+		if s.Stats[""] > 0 {
 			hash.WriteByte(1)
 		} else {
 			hash.WriteByte(0)
@@ -80,7 +80,7 @@ func (s *String) Equal(d Deducer) bool {
 	if !s.dedBase.Equal(&b.dedBase) {
 		return false
 	}
-	if se, de := s.stats[""], b.stats[""]; (se > 0) != (de > 0) {
+	if se, de := s.Stats[""], b.Stats[""]; (se > 0) != (de > 0) {
 		return false
 	}
 	return true
