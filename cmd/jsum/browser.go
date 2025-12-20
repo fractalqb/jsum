@@ -3,44 +3,78 @@ package main
 import (
 	"fmt"
 	"log"
-	"maps"
 	"slices"
-	"sort"
-	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"git.fractalqb.de/fractalqb/jsum"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	// github.com/sahilm/fuzzy
+	"github.com/sahilm/fuzzy"
 )
 
 const (
 	pgTree                = "tree"
 	pgHelp                = "help"
-	helpWidth, helpHeight = 46, 12
+	pgStat                = "stat"
+	pgSearchTerm          = "search-term"
+	pgSearchMatch         = "search-match"
+	helpWidth, helpHeight = 46, 14
+	slsWidth, slsRows     = 38, 12
+	statDefault           = "Press ? for help"
 )
 
+type searchTerm struct {
+	txt   string
+	nodes []*tview.TreeNode
+}
+
+type searchSource []searchTerm
+
+func (src searchSource) Len() int            { return len(src) }
+func (src searchSource) String(i int) string { return src[i].txt }
+
 type browser struct {
-	data *tview.TreeNode
-	tree *tview.TreeView
-	help *tview.TextArea
-	pags *tview.Pages
-	path *tview.TextView
-	stat *tview.TextView
+	app *tview.Application
+
+	data      *tview.TreeNode
+	tree      *tview.TreeView
+	path      *tview.TextView
+	stat      *tview.TextView
+	srchTerm  *tview.TextArea
+	srchMatch *tview.Table
+	help      *tview.TextView
+	pgsMain   *tview.Pages
+	pgsFoot   *tview.Pages
+
+	searchSrc searchSource
+	search    struct {
+		matches    []*searchTerm
+		matchNodes int
+		match      *searchTerm
+		matchNode  int
+		term       string
+	}
 }
 
 func newBrowser(scm jsum.Deducer, samples int) *browser {
-	data := browseTree(scm, func(s string) string {
-		return fmt.Sprintf("%d × %s", samples, s)
-	})
+	srb := make(searchBuild)
+	data := browseTree(scm,
+		func(s string) string { return fmt.Sprintf("%d × %s", samples, s) },
+		srb,
+	)
 	b := &browser{
-		data: data,
-		tree: tview.NewTreeView().SetRoot(data).SetCurrentNode(data),
-		help: tview.NewTextArea().SetSize(helpHeight, helpWidth).SetText(helpText, false),
-		pags: tview.NewPages(),
-		path: tview.NewTextView(),
-		stat: tview.NewTextView().SetText("Press ? for help"),
+		data:      data,
+		tree:      tview.NewTreeView().SetRoot(data).SetCurrentNode(data),
+		path:      tview.NewTextView(),
+		stat:      tview.NewTextView().SetText(statDefault).SetDynamicColors(true),
+		srchTerm:  tview.NewTextArea(),
+		srchMatch: tview.NewTable().SetSelectable(true, false),
+		help:      tview.NewTextView().SetSize(helpHeight, helpWidth).SetText(helpText),
+		pgsMain:   tview.NewPages(),
+		pgsFoot:   tview.NewPages(),
+
+		searchSrc: make(searchSource, 0, len(srb)),
 	}
 
 	b.tree.SetInputCapture(b.treeInput)
@@ -48,37 +82,66 @@ func newBrowser(scm jsum.Deducer, samples int) *browser {
 		b.path.SetText(nodePath(b.tree.GetPath(node)))
 	})
 
-	b.help.SetBorder(true).SetTitle(" Help (ESC to close) ")
-	b.help.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		b.pags.SendToFront(pgTree)
-		return nil
-	})
-
 	b.path.SetTextStyle(tcell.StyleDefault.Reverse(true).Bold(true))
 
 	b.stat.SetTextStyle(tcell.StyleDefault.Reverse(true))
 
-	b.pags.AddPage(pgHelp, modal(b.help, helpWidth, helpHeight), true, true).
+	b.help.SetBorder(true).SetTitle(" Help (ESC to close) ")
+	b.help.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		b.pgsMain.SendToFront(pgTree)
+		return nil
+	})
+
+	b.srchMatch.SetSelectionChangedFunc(b.matchSelected).
+		SetInputCapture(b.searchMatchInput).
+		SetBorder(true).
+		SetTitle(" Search matches ")
+
+	b.pgsMain.AddPage(pgHelp, modal(b.help, "c", helpWidth, helpHeight), true, true).
+		AddPage(pgSearchMatch, modal(b.srchMatch, "R", slsWidth, slsRows+2), true, true).
 		AddPage(pgTree, b.tree, true, true)
+
+	b.srchTerm.SetTextStyle(tcell.StyleDefault.Reverse(true)).
+		SetChangedFunc(b.searchChange).
+		SetInputCapture(b.searchTermInput)
+
+	b.pgsFoot.AddPage(pgSearchTerm, b.srchTerm, true, true).
+		AddPage(pgStat, b.stat, true, true)
+
+	for s, ns := range srb {
+		b.searchSrc = append(b.searchSrc, searchTerm{s, ns})
+	}
 	return b
 }
 
 func (b *browser) run() {
 	flex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(b.path, 1, 0, false).
-		AddItem(b.pags, 0, 1, true).
-		AddItem(b.stat, 1, 0, false)
-	err := tview.NewApplication().
+		AddItem(b.pgsMain, 0, 1, true).
+		AddItem(b.pgsFoot, 1, 0, false)
+	b.app = tview.NewApplication().
 		SetRoot(flex, true).
-		SetFocus(b.tree).
-		Run()
+		SetFocus(b.tree)
+	err := b.app.Run()
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func (b *browser) treeInput(event *tcell.EventKey) *tcell.EventKey {
-	switch event.Rune() {
+func (b *browser) treeInput(evt *tcell.EventKey) *tcell.EventKey {
+	switch evt.Key() {
+	case tcell.KeyLeft:
+		if evt.Modifiers()&tcell.ModShift == 0 {
+			return evt
+		}
+		p := b.tree.GetPath(b.tree.GetCurrentNode())
+		if l := len(p); l > 1 {
+			b.tree.SetCurrentNode(p[l-2])
+			b.path.SetText(nodePath(p[:l-1]))
+		}
+		return nil
+	}
+	switch evt.Rune() {
 	case 'r':
 		siblSetExpand(b.tree, true)
 		return nil
@@ -91,151 +154,170 @@ func (b *browser) treeInput(event *tcell.EventKey) *tcell.EventKey {
 	case 'M':
 		treeSetExpand(b.tree.GetCurrentNode(), false)
 		return nil
+	case 's':
+		b.srchTerm.SetLabel("Search:")
+		if txt := b.srchTerm.GetText(); txt != "" {
+			b.srchTerm.Select(0, len(txt))
+		}
+		b.pgsFoot.SendToFront(pgSearchTerm)
+		b.srchMatch.Select(0, 0)
+		b.pgsMain.SendToFront(pgSearchMatch)
+		b.app.SetFocus(b.srchTerm)
 	case '?':
-		b.pags.SendToFront(pgHelp)
+		b.pgsMain.SendToFront(pgHelp)
 	}
-	return event
+	return evt
 }
 
-type lbFmtFunc func(string) string
-
-func browseTree(scm jsum.Deducer, lff lbFmtFunc) (res *tview.TreeNode) {
-	switch scm := scm.(type) {
-	case *jsum.String:
-		res = browseString(scm, lff)
-	case *jsum.Number:
-		res = browseNumber(scm, lff)
-	case *jsum.Object:
-		res = browseObject(scm, lff)
-	case *jsum.Boolean:
-		res = browseBool(scm, lff)
-	case *jsum.Array:
-		res = browseArray(scm, lff)
-	case *jsum.Union:
-		res = browseUnion(scm, lff)
-	case *jsum.Any:
-		res = browseAny(scm, lff)
-	case *jsum.Unknown:
-		res = browseUnknown(scm, lff)
-	case jsum.Invalid:
-		res = browseInvalid(scm, lff)
-	default:
-		res = tview.NewTreeNode(lff(fmt.Sprintf("Unsupported deducer: %T", scm)))
-		res.SetSelectable(false)
+func (b *browser) searchTermInput(evt *tcell.EventKey) *tcell.EventKey {
+	switch evt.Key() {
+	case tcell.KeyEnter:
+		b.srchMatch.Select(0, 0)
+		b.app.SetFocus(b.srchMatch)
+		b.pgsFoot.SendToFront(pgStat)
+		return nil
+	case tcell.KeyESC:
+		b.stat.SetText(statDefault)
+		b.pgsMain.SendToFront(pgTree)
+		b.pgsFoot.SendToFront(pgStat)
+		b.app.SetFocus(b.tree)
+		return nil
 	}
-	return res
+	return evt
 }
 
-func browseString(scm *jsum.String, lff lbFmtFunc) (res *tview.TreeNode) {
-	fldNode := stdFolder(lff(jsum.StringLabel(scm)))
-	res = tview.NewTreeNode(fldNode.label(false))
-	initRef(res, &fldNode, scm)
-	var maxCount int
-	for _, n := range scm.Stats {
-		maxCount = max(maxCount, n)
-	}
-	strs := slices.Collect(maps.Keys(scm.Stats))
-	sort.Strings(strs)
-	if maxCount > 1 {
-		width := len(strconv.Itoa(maxCount))
-		form := fmt.Sprintf(" %%%dd × %%#v", width)
-		for _, s := range strs {
-			sn := tview.NewTreeNode(fmt.Sprintf(form, scm.Stats[s], s))
-			res.AddChild(sn)
+func (b *browser) searchMatchInput(evt *tcell.EventKey) *tcell.EventKey {
+	prevNode := func() {
+		if b.search.match != nil {
+			if b.search.matchNode--; b.search.matchNode < 0 {
+				b.search.matchNode = len(b.search.match.nodes) - 1
+			}
+			b.visitNode(b.search.match.nodes[b.search.matchNode])
+			b.srchStat()
 		}
+	}
+	nextNode := func() {
+		if b.search.match != nil {
+			if b.search.matchNode++; b.search.matchNode >= len(b.search.match.nodes) {
+				b.search.matchNode = 0
+			}
+			b.visitNode(b.search.match.nodes[b.search.matchNode])
+			b.srchStat()
+		}
+	}
+	switch evt.Key() {
+	case tcell.KeyESC:
+		b.app.SetFocus(b.srchTerm)
+		b.pgsFoot.SendToFront(pgSearchTerm)
+		return nil
+	case tcell.KeyLeft:
+		if evt.Modifiers()&tcell.ModShift == 0 {
+			return evt
+		}
+		prevNode()
+		return nil
+	case tcell.KeyRight:
+		if evt.Modifiers()&tcell.ModShift == 0 {
+			return evt
+		}
+		nextNode()
+		return nil
+	}
+	switch evt.Rune() {
+	case 'H':
+		prevNode()
+		return nil
+	case 'L':
+		nextNode()
+		return nil
+	}
+	return evt
+}
+
+func (b *browser) matchSelected(row, column int) {
+	if row >= len(b.search.matches) {
+		return
+	}
+	b.search.match = b.search.matches[row]
+	b.search.matchNode = 0
+	if ref := b.srchMatch.GetCell(row, 1).GetReference(); ref != nil {
+		b.search.term = ref.(string)
+	}
+	b.visitNode(b.search.match.nodes[0])
+	b.srchStat()
+
+	b.srchMatch.SetTitle(fmt.Sprintf(" %d/%d terms • %d matches ",
+		row+1,
+		len(b.search.matches),
+		b.search.matchNodes,
+	))
+}
+
+func (b *browser) srchStat() {
+	if len(b.search.match.nodes) > 1 {
+		b.stat.SetText(fmt.Sprintf("%d/%d: [::b]%s[::-] (select: S-🠈/H, S-🠊/L)",
+			b.search.matchNode+1,
+			len(b.search.match.nodes),
+			b.search.term,
+		))
 	} else {
-		for _, s := range strs {
-			sn := tview.NewTreeNode(fmt.Sprintf(" %#v", s))
-			res.AddChild(sn)
+		b.stat.SetText(fmt.Sprintf("1/1: [::b]%s[::-]", b.search.term))
+	}
+}
+
+func (b *browser) visitNode(n *tview.TreeNode) {
+	path := b.tree.GetPath(n)
+	for _, n := range path {
+		if !n.IsExpanded() {
+			if f := getFolder(n); f != nil {
+				n.SetText(f.label(true))
+			}
+			n.SetExpanded(true)
 		}
 	}
-	res.SetExpanded(false)
-	fldNode.fold(res)
-	return res
+	b.tree.SetCurrentNode(n)
 }
 
-func browseNumber(scm *jsum.Number, lff lbFmtFunc) (res *tview.TreeNode) {
-	res = tview.NewTreeNode(" " + lff(jsum.NumberLabel(scm)))
-	initRef(res, nil, scm)
-	return res
+func (b *browser) searchChange() {
+	pat := b.srchTerm.GetText()
+	if utf8.RuneCountInString(pat) < 1 {
+		return
+	}
+	matches := fuzzy.FindFrom(b.srchTerm.GetText(), b.searchSrc)
+	b.srchMatch.Clear()
+	b.search.matches = b.search.matches[:0]
+	b.search.matchNodes = 0
+	for i, m := range matches {
+		match := &b.searchSrc[m.Index]
+		b.search.matches = append(b.search.matches, match)
+		b.srchMatch.SetCell(i, 0, tview.NewTableCell(
+			fmt.Sprintf("%d×", len(match.nodes)),
+		).SetAlign(tview.AlignRight))
+		b.srchMatch.SetCell(i, 1, tview.NewTableCell(matchStr(&m)).SetReference(m.Str))
+		b.search.matchNodes += len(match.nodes)
+	}
+	b.srchMatch.Select(0, 0)
 }
 
-func browseObject(scm *jsum.Object, lff lbFmtFunc) (res *tview.TreeNode) {
-	fldNode := stdFolder(lff(jsum.ObjectLabel(scm)))
-	res = tview.NewTreeNode(fldNode.label(true))
-	initRef(res, &fldNode, scm)
-	nms := slices.Collect(maps.Keys(scm.Members))
-	slices.Sort(nms)
+func matchStr(m *fuzzy.Match) string {
+	hi := false
 	var sb strings.Builder
-	for _, a := range nms {
-		fmt.Fprintf(&sb, "[::b]\"%s\"[::-] ", a)
-		m := scm.Members[a]
-		if m.Occurence < scm.Count {
-			fmt.Fprintf(&sb, "optional (%d/%d %.0f%%)",
-				m.Occurence,
-				scm.Count,
-				100*float64(m.Occurence)/float64(scm.Count),
-			)
-		} else {
-			fmt.Fprintf(&sb, "mandatory (%d×)", m.Occurence)
+	for i, r := range ([]rune)(m.Str) {
+		if slices.Contains(m.MatchedIndexes, i) {
+			if !hi {
+				sb.WriteString("[::b]")
+				hi = true
+			}
+		} else if hi {
+			sb.WriteString("[::-]")
+			hi = false
 		}
-		sb.WriteByte(':')
-		fldMember := folder{
-			text:  sb.String(),
-			open:  "┯ ",
-			close: "━ ",
-		}
-		sb.Reset()
-		nm := tview.NewTreeNode(fldMember.label(true))
-		initRef(nm, &fldMember, a)
-		nm.AddChild(browseTree(m.Ded, noFmt))
-		fldMember.fold(nm)
-		res.AddChild(nm)
+		sb.WriteRune(r)
 	}
-	fldNode.fold(res)
-	return res
-}
-
-func browseBool(scm *jsum.Boolean, lff lbFmtFunc) (res *tview.TreeNode) {
-	res = tview.NewTreeNode(" " + lff(jsum.BoolLabel(scm)))
-	initRef(res, nil, scm)
-	return res
-}
-
-func browseArray(scm *jsum.Array, lff lbFmtFunc) (res *tview.TreeNode) {
-	res = tview.NewTreeNode("┬ " + lff(jsum.ArrayLabel(scm)) + ":")
-	initRef(res, nil, scm)
-	res.AddChild(browseTree(scm.Elem, noFmt))
-	return res
-}
-
-func browseUnion(scm *jsum.Union, lff lbFmtFunc) (res *tview.TreeNode) {
-	fldNode := stdFolder(lff(jsum.UnionLabel(scm)) + ":")
-	res = tview.NewTreeNode(fldNode.label(true))
-	initRef(res, nil, scm)
-	for _, d := range scm.Variants {
-		res.AddChild(browseTree(d, noFmt))
+	if hi {
+		sb.WriteString("[::-]")
 	}
-	fldNode.fold(res)
-	return res
-}
-
-func browseAny(scm *jsum.Any, lff lbFmtFunc) (res *tview.TreeNode) {
-	res = tview.NewTreeNode(" " + lff(jsum.AnyLabel(scm)))
-	initRef(res, nil, scm)
-	return res
-}
-
-func browseUnknown(scm *jsum.Unknown, lff lbFmtFunc) (res *tview.TreeNode) {
-	res = tview.NewTreeNode(" " + lff(jsum.UnknownLabel(scm)))
-	initRef(res, nil, scm)
-	return res
-}
-
-func browseInvalid(scm jsum.Invalid, lff lbFmtFunc) (res *tview.TreeNode) {
-	res = tview.NewTreeNode(" " + lff(jsum.InvalidLabel(scm)))
-	initRef(res, nil, scm)
-	return res
+	return sb.String()
 }
 
 type folder struct {
@@ -285,39 +367,6 @@ func nodePath(p []*tview.TreeNode) string {
 	return sb.String()
 }
 
-type ref struct {
-	fld  *folder
-	info any
-}
-
-func initRef(n *tview.TreeNode, f *folder, info any) {
-	n.SetReference(ref{f, info})
-}
-
-func getFolder(n *tview.TreeNode) *folder {
-	tmp := n.GetReference()
-	if tmp == nil {
-		return nil
-	}
-	r, ok := tmp.(ref)
-	if ok {
-		return r.fld
-	}
-	return nil
-}
-
-func getInfo(n *tview.TreeNode) any {
-	tmp := n.GetReference()
-	if tmp == nil {
-		return nil
-	}
-	r, ok := tmp.(ref)
-	if ok {
-		return r.info
-	}
-	return nil
-}
-
 func treeSetExpand(n *tview.TreeNode, exp bool) {
 	if f := getFolder(n); f != nil {
 		n.SetExpanded(exp)
@@ -330,35 +379,53 @@ func treeSetExpand(n *tview.TreeNode, exp bool) {
 
 func siblSetExpand(b *tview.TreeView, exp bool) {
 	path := b.GetPath(b.GetCurrentNode())
-	if len(path) < 2 {
+	l := len(path)
+	switch l {
+	case 0:
 		return
-	}
-	parent := path[len(path)-2]
-	for _, c := range parent.GetChildren() {
-		if f := getFolder(c); f != nil {
-			c.SetExpanded(exp)
-			c.SetText(f.label(exp))
+	case 1:
+		if f := getFolder(path[0]); f != nil {
+			path[0].SetExpanded(exp)
+			path[0].SetText(f.label(exp))
+		}
+	default:
+		parent := path[len(path)-2]
+		for _, c := range parent.GetChildren() {
+			if f := getFolder(c); f != nil {
+				c.SetExpanded(exp)
+				c.SetText(f.label(exp))
+			}
 		}
 	}
 }
 
-func modal(p tview.Primitive, width, height int) tview.Primitive {
-	return tview.NewFlex().
-		AddItem(nil, 0, 1, false).
-		AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+func modal(p tview.Primitive, a string, width, height int) tview.Primitive {
+	switch a {
+	case "R":
+		return tview.NewFlex().
 			AddItem(nil, 0, 1, false).
-			AddItem(p, height, 1, true).
-			AddItem(nil, 0, 1, false), width, 1, true).
-		AddItem(nil, 0, 1, false)
+			AddItem(p, width, 1, true)
+	default:
+		return tview.NewFlex().
+			AddItem(nil, 0, 1, false).
+			AddItem(tview.NewFlex().SetDirection(tview.FlexRow).
+				AddItem(nil, 0, 1, false).
+				AddItem(p, height, 1, true).
+				AddItem(nil, 0, 1, false),
+				width, 1, true,
+			).AddItem(nil, 0, 1, false)
+	}
 }
 
-const helpText = `j, ↓, →          : Move down by one node
-k, ↑, ←          : Move up by one node
+const helpText = `j, 🠋, 🠊          : Move down by one node
+k, 🠉, 🠈          : Move up by one node
 g, home          : Move to the top
 G, end           : Move to the bottom
 J                : Move down one level
-K                : Move up one level
+K, S-🠈           : Move up one level
 Ctrk-F, page down: Move down by one page
 Ctrl-B, page up  : Move up by one page
+Space, Enter     : Toggle node folding
 m / M            : Fold siblings / subtree
-r / R            : Unfold siblings / subtree`
+r / R            : Unfold siblings / subtree
+s                : Search nodes`

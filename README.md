@@ -29,9 +29,8 @@ The tools I found were focused on JSON Schema, so I rolled my own…
    `go install git.fractalqb.de/fractalqb/jsum/cmd/jsum@latest`
 
 ## Whats next
-- JSUM is currently in a "enough to give me the summary" state, it has a
-  reasonable software design, but it breaks with many software engineering
-  practices, first of all: tests. – This should be improved
+- JSUM is currently in a "enough to give me insights" state. It is programmed in
+  a rather casual manner and probably will remain like that. It did the job… 
 
 - In principle the algorithm would also work in a streaming mode. But the
   current implementation depends on complete JSON values to be read into a Go
