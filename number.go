@@ -109,6 +109,21 @@ func (nr *Number) Equal(d Deducer) bool {
 	return res
 }
 
+func (nr *Number) JSONSchema() any {
+	scm := jscmNumber{
+		Min: new(float64),
+		Max: new(float64),
+	}
+	if nr.isFloat && nr.hadFrac {
+		scm.Type = "number"
+	} else {
+		scm.Type = "integer"
+	}
+	*scm.Min = nr.min
+	*scm.Max = nr.max
+	return scm
+}
+
 func (nr *Number) super() *dedBase { return &nr.dedBase }
 
 func (nr *Number) updateFloat(v any) float64 {

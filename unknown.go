@@ -56,4 +56,6 @@ func (a *Unknown) Equal(d Deducer) bool {
 	return a.dedBase.Equal(&b.dedBase)
 }
 
+func (*Unknown) JSONSchema() any { return false }
+
 func (a *Unknown) super() *dedBase { return &a.dedBase }

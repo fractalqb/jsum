@@ -63,4 +63,8 @@ func (s *Boolean) Equal(d Deducer) bool {
 	return res
 }
 
+func (a *Boolean) JSONSchema() any {
+	return jscmString{jscmType: jscmType{Type: "boolean"}}
+}
+
 func (s *Boolean) super() *dedBase { return &s.dedBase }

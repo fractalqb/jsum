@@ -23,10 +23,10 @@ var (
 		DedupNumber: jsum.DedpuNumberIntFloat | jsum.DedupNumberNeg,
 		DedupString: jsum.DedupStringEmpty,
 	}
-	fTreeStyle  = "draw"
-	fStrMax     = 6
-	fTypes      bool
-	fArgs, fOut string
+	fTreeStyle           = "draw"
+	fStrMax              = 6
+	fTypes               bool
+	fArgs, fOut, fSchema string
 )
 
 const (
@@ -47,6 +47,7 @@ func init() {
 
 func usage() {
 	w := flag.CommandLine.Output()
+	fmt.Print("Generate a summary from example JSON or YAML files.\n\n")
 	fmt.Fprintln(w, `Usage: jsum [flags] <JSON/YAML file>...
 FLAGS:`)
 	flag.PrintDefaults()
@@ -55,15 +56,17 @@ FLAGS:`)
 func main() {
 	flag.Usage = usage
 	flag.StringVar(&fTreeStyle, "tree", fTreeStyle,
-		"Select style for tree drawing from: ascii, draw, items; Env: "+envJsumTree+"\n")
+		"Select style for tree printing from: ascii, draw, items; Env: "+envJsumTree+"\n")
 	flag.IntVar(&fStrMax, "strings", fStrMax,
-		"Max number of strings values to show per property; Env: "+envJsumStrings+"\n")
+		"Max number of strings values to print per property; Env: "+envJsumStrings+"\n")
 	flag.BoolVar(&fTypes, "types", fTypes,
 		"Find reused types (experimental)")
 	flag.StringVar(&fArgs, "a", fArgs,
 		"Read args from file ('-' reads from stdin)")
 	flag.StringVar(&fOut, "o", fOut,
 		"Print summary to file ('-' writes to stdout)")
+	flag.StringVar(&fSchema, "schema", fSchema,
+		"Generate JSON Schema file")
 	flag.Parse()
 
 	var (
@@ -88,11 +91,11 @@ func main() {
 		scm, samples = read(dec, scm)
 	}
 
-	if fOut == "" {
+	if fOut == "" && fSchema == "" {
 		newBrowser(scm, samples).run()
 	} else {
 		var w io.Writer = os.Stdout
-		if fOut != "-" {
+		if fOut != "" && fOut != "-" {
 			if tmp, err := os.Create(fOut); err != nil {
 				log.Fatal(err)
 			} else {
@@ -116,6 +119,20 @@ func main() {
 			TreeStyle: tstyle,
 			StringMax: fStrMax,
 		})
+
+		if fSchema != "" {
+			scm := scm.JSONSchema()
+			f, err := os.Create(fSchema)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+			enc := json.NewEncoder(f)
+			enc.SetIndent("", "   ")
+			if err := enc.Encode(scm); err != nil {
+				log.Fatal(err)
+			}
+		}
 
 		if err := sum.Print(scm); err != nil {
 			log.Fatal(err)

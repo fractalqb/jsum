@@ -79,6 +79,7 @@ type Deducer interface {
 	Hash(dh DedupHash) uint64
 	Copies() []Deducer
 	Equal(d Deducer) bool
+	JSONSchema() any
 	super() *dedBase
 }
 

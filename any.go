@@ -35,4 +35,6 @@ func (a *Any) Equal(d Deducer) bool {
 	return a.dedBase.Equal(&b.dedBase)
 }
 
+func (*Any) JSONSchema() any { return struct{}{} }
+
 func (a *Any) super() *dedBase { return &a.dedBase }

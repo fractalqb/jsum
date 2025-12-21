@@ -1,6 +1,10 @@
 package jsum
 
-import "time"
+import (
+	"math"
+	"time"
+	"unicode/utf8"
+)
 
 type Format int
 
@@ -84,6 +88,28 @@ func (s *String) Equal(d Deducer) bool {
 		return false
 	}
 	return true
+}
+
+func (a *String) JSONSchema() any {
+	scm := jscmString{
+		jscmType: jscmType{Type: "string"},
+	}
+	switch a.format {
+	case 0:
+		mi, ma := math.MaxInt, 0
+		for s := range a.Stats {
+			n := utf8.RuneCountInString(s)
+			mi = min(mi, n)
+			ma = max(ma, n)
+		}
+		scm.MinLen = new(int)
+		*scm.MinLen = mi
+		scm.MaxLen = new(int)
+		*scm.MaxLen = ma
+	case DateTimeFormat:
+		scm.Format = "date-time"
+	}
+	return scm
 }
 
 func (s *String) super() *dedBase { return &s.dedBase }

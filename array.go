@@ -79,4 +79,13 @@ func (a *Array) Equal(d Deducer) bool {
 	return a.Elem.Equal(b.Elem)
 }
 
+func (a *Array) JSONSchema() any {
+	return jscmArray{
+		jscmType: jscmType{Type: "array"},
+		Items:    a.Elem.JSONSchema(),
+		MinItems: a.minLen,
+		MaxItems: a.maxLen,
+	}
+}
+
 func (a *Array) super() *dedBase { return &a.dedBase }

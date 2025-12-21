@@ -61,4 +61,12 @@ func (u *Union) Equal(d Deducer) bool {
 	return res
 }
 
+func (u *Union) JSONSchema() any {
+	scm := jscmOneOf{OneOf: make([]any, len(u.Variants))}
+	for i, v := range u.Variants {
+		scm.OneOf[i] = v.JSONSchema()
+	}
+	return scm
+}
+
 func (u *Union) super() *dedBase { return &u.dedBase }

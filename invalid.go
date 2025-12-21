@@ -16,6 +16,10 @@ func (Invalid) Equal(_ Deducer) bool { return false }
 
 func (Invalid) Copies() []Deducer { return nil }
 
+func (i Invalid) JSONSchema() any {
+	return i.error // TODO
+}
+
 var invBase dedBase
 
 func (Invalid) super() *dedBase { return &invBase }

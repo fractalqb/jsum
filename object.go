@@ -96,4 +96,19 @@ func (o *Object) Equal(d Deducer) bool {
 	return res
 }
 
+func (o *Object) JSONSchema() any {
+	res := jscmObj{
+		jscmType: jscmType{Type: "object"},
+		Props:    make(map[string]any, len(o.Members)),
+	}
+	for n, t := range o.Members {
+		ded := t.Ded
+		res.Props[n] = ded.JSONSchema()
+		if t.Occurence == o.Count {
+			res.Required = append(res.Required, n)
+		}
+	}
+	return res
+}
+
 func (o *Object) super() *dedBase { return &o.dedBase }
