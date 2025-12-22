@@ -1,25 +1,41 @@
+/*
+A tool to analyse the structure of JSON from a set of example JSON values.
+Copyright (C) 2025  Marcus Perlick
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package jsum
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 type Array struct {
 	dedBase
-	minLen, maxLen int
-	Elem           Deducer
+	MinLen int     `json:"min-len"`
+	MaxLen int     `json:"max-len"`
+	Elem   Deducer `json:"elements"`
 }
 
-func newArrJson(cfg *Config, a []any) *Array {
+func newArrJson(cfg *Config, count, nulln int) *Array {
 	res := &Array{
-		dedBase: dedBase{cfg: cfg},
-		minLen:  len(a),
-		maxLen:  len(a),
+		dedBase: dedBase{cfg: cfg, Count: count, Null: nulln},
+		MinLen:  -1,
+		MaxLen:  -1,
 		Elem:    NewUnknown(cfg),
-	}
-	if a == nil {
-		res.null = 1
-	}
-	for _, e := range a {
-		res.Elem = res.Elem.Example(e)
 	}
 	return res
 }
@@ -32,28 +48,34 @@ func (a *Array) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
-		a.null++
+		a.Count++
+		a.Null++
 		return a
 	case JsonArray:
-		switch av := v.(type) {
+		a.Count++
+		switch v := v.(type) {
 		case []any:
-			if l := len(av); l < a.minLen {
-				a.minLen = l
-			} else if l > a.maxLen {
-				a.maxLen = l
+			l := len(v)
+			if a.MinLen < 0 {
+				a.MinLen, a.MaxLen = l, l
+			} else {
+				a.MinLen = min(a.MinLen, l)
+				a.MaxLen = max(a.MaxLen, l)
 			}
-			for _, e := range av {
+			for _, e := range v {
 				a.Elem = a.Elem.Example(e)
 			}
+		default:
+			panic(fmt.Errorf("array example of type %T", v))
 		}
 		return a
 	}
-	return newAny(a.cfg, a.null)
+	return newAny(a.cfg, a.Count+1, a.Null)
 }
 
 func (a *Array) Hash(dh DedupHash) uint64 {
 	hash := a.dedBase.startHash(JsonArray)
-	if a.maxLen == 0 {
+	if a.MaxLen == 0 {
 		hash.WriteByte(0)
 	} else {
 		hash.WriteByte(1)
@@ -73,19 +95,23 @@ func (a *Array) Equal(d Deducer) bool {
 	if !a.dedBase.Equal(&b.dedBase) {
 		return false
 	}
-	if (a.minLen == 0) != (b.minLen == 0) {
+	if (a.MinLen == 0) != (b.MinLen == 0) {
 		return false
 	}
 	return a.Elem.Equal(b.Elem)
 }
 
 func (a *Array) JSONSchema() any {
-	return jscmArray{
+	res := jscmArray{
 		jscmType: jscmType{Type: "array"},
 		Items:    a.Elem.JSONSchema(),
-		MinItems: a.minLen,
-		MaxItems: a.maxLen,
+		MinItems: a.MinLen,
+		MaxItems: a.MaxLen,
 	}
+	if a.Null > 0 {
+		return []any{"null", res}
+	}
+	return res
 }
 
 func (a *Array) super() *dedBase { return &a.dedBase }

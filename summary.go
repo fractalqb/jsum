@@ -1,3 +1,21 @@
+/*
+A tool to analyse the structure of JSON from a set of example JSON values.
+Copyright (C) 2025  Marcus Perlick
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package jsum
 
 import (
@@ -68,28 +86,29 @@ func (s *Summary) printIndet(scm Deducer, last bool) (err error) {
 	return err
 }
 
-func AnyLabel(n *Any) string {
-	if ns := n.Nulls(); ns > 0 {
-		return fmt.Sprintf("[Any %d×null]", ns)
+func numsLabel(b *dedBase) string {
+	if b.Null > 0 {
+		p := int(math.Round(100 * float64(b.Null) / float64(b.Count)))
+		if p == 0 {
+			return fmt.Sprintf("[null:%d/%d]", b.Null, b.Count)
+		}
+		return fmt.Sprintf("[null:%d/%d %d%%]", b.Null, b.Count, p)
 	}
-	return "Any"
+	return fmt.Sprintf("[%d×]", b.Count)
 }
 
-func UnknownLabel(n *Unknown) string {
-	if ns := n.Nulls(); ns > 0 {
-		return fmt.Sprintf("[??? %d×null]", ns)
-	}
-	return "???"
-}
+func AnyLabel(ded *Any) string { return "Any " + numsLabel(&ded.dedBase) }
+
+func UnknownLabel(ded *Unknown) string { return "??? " + numsLabel(&ded.dedBase) }
 
 func InvalidLabel(n Invalid) string {
 	return fmt.Sprintf("<INVALID: %s>\n", n.error.Error())
 }
 
-func StringLabel(n *String) string {
+func StringLabel(ded *String) string {
 	var sb strings.Builder
 	minLen, maxLen := math.MaxInt, 0
-	for str := range n.Stats {
+	for str := range ded.Stats {
 		l := len(str)
 		if l < minLen {
 			minLen = l
@@ -98,12 +117,8 @@ func StringLabel(n *String) string {
 			maxLen = l
 		}
 	}
-	if ns := n.Nulls(); ns > 0 {
-		fmt.Fprintf(&sb, "[String %d×null]", ns)
-	} else {
-		fmt.Fprint(&sb, "String")
-	}
-	switch n.format {
+	sb.WriteString("String")
+	switch ded.Format {
 	case DateTimeFormat:
 		fmt.Fprint(&sb, " format=date-time")
 	default:
@@ -113,7 +128,7 @@ func StringLabel(n *String) string {
 			fmt.Fprintf(&sb, " len:%d..%d", minLen, maxLen)
 		}
 	}
-	fmt.Fprintf(&sb, " distinct:%d", len(n.Stats))
+	fmt.Fprintf(&sb, " distinct:%d %s", len(ded.Stats), numsLabel(&ded.dedBase))
 	return sb.String()
 }
 
@@ -185,11 +200,12 @@ func (s *Summary) str(n *String) error {
 	return nil
 }
 
-func BoolLabel(n *Boolean) string {
-	if ns := n.Nulls(); ns > 0 {
-		return fmt.Sprintf("[Boolean %d×null] true:%d / false:%d\n", ns, n.tNo, n.fNo)
-	}
-	return fmt.Sprintf("Boolean true:%d / false:%d\n", n.tNo, n.fNo)
+func BoolLabel(ded *Boolean) string {
+	return fmt.Sprintf("Boolean true:%d / false:%d %s",
+		ded.TrueNo,
+		ded.FalseNo,
+		numsLabel(&ded.dedBase),
+	)
 }
 
 func (s *Summary) bool(n *Boolean) error {
@@ -197,34 +213,31 @@ func (s *Summary) bool(n *Boolean) error {
 	return nil
 }
 
-func NumberLabel(n *Number) string {
+func NumberLabel(ded *Number) string {
 	var sum string
-	if n.isFloat {
-		if n.min == n.max {
-			if n.hadFrac {
-				sum = fmt.Sprintf("Number = %f", n.min)
+	if ded.IsFloat {
+		if ded.Min == ded.Max {
+			if ded.HasFrac {
+				sum = fmt.Sprintf("Number = %f ", ded.Min)
 			} else {
-				sum = fmt.Sprintf("Number = %f 0-fracs", n.min)
+				sum = fmt.Sprintf("Number = %f 0-fracs ", ded.Min)
 			}
 		} else {
-			if n.hadFrac {
-				sum = fmt.Sprintf("Number %f–%f", n.min, n.max)
+			if ded.HasFrac {
+				sum = fmt.Sprintf("Number %f–%f ", ded.Min, ded.Max)
 			} else {
-				sum = fmt.Sprintf("Number %f–%f 0-fracs", n.min, n.max)
+				sum = fmt.Sprintf("Number %f–%f 0-fracs ", ded.Min, ded.Max)
 			}
 		}
 	} else {
-		mi, ma := int64(n.min), int64(n.max)
+		mi, ma := int64(ded.Min), int64(ded.Max)
 		if mi == ma {
-			sum = fmt.Sprintf("Integer = %d", mi)
+			sum = fmt.Sprintf("Integer = %d ", mi)
 		} else {
-			sum = fmt.Sprintf("Integer %d–%d", mi, ma)
+			sum = fmt.Sprintf("Integer %d–%d ", mi, ma)
 		}
 	}
-	if ns := n.Nulls(); ns > 0 {
-		return fmt.Sprintf("[%s %d×null]", sum, ns)
-	}
-	return sum
+	return sum + numsLabel(&ded.dedBase)
 }
 
 func (s *Summary) number(n *Number) error {
@@ -232,15 +245,15 @@ func (s *Summary) number(n *Number) error {
 	return nil
 }
 
-func ObjectLabel(o *Object) string {
-	if ns := o.Nulls(); ns > 0 {
-		return fmt.Sprintf("[Object %d×null] with %d members", ns, len(o.Members))
-	}
-	return fmt.Sprintf("Object with %d members", len(o.Members))
+func ObjectLabel(ded *Object) string {
+	return fmt.Sprintf("Object with %d members %s",
+		len(ded.Members),
+		numsLabel(&ded.dedBase),
+	)
 }
 
 func (s *Summary) object(o *Object) error {
-	fmt.Fprintf(s.w, "%s:\n", ObjectLabel(o))
+	fmt.Fprintf(s.w, "%s\n", ObjectLabel(o))
 	nms := make([]string, 0, len(o.Members))
 	for a := range o.Members {
 		nms = append(nms, a)
@@ -265,7 +278,7 @@ func (s *Summary) object(o *Object) error {
 		} else {
 			fmt.Fprintf(s.w, "mandatory (%d×)", m.Occurence)
 		}
-		fmt.Println(":")
+		fmt.Fprintln(s.w, ":")
 		s.tree.Descend()
 		if err := s.printIndet(m.Ded, true); err != nil {
 			return err
@@ -276,17 +289,14 @@ func (s *Summary) object(o *Object) error {
 	return nil
 }
 
-func ArrayLabel(a *Array) string {
+func ArrayLabel(ded *Array) string {
 	var lens string
-	if a.minLen == a.maxLen {
-		lens = strconv.Itoa(a.minLen)
+	if ded.MinLen == ded.MaxLen {
+		lens = strconv.Itoa(ded.MinLen)
 	} else {
-		lens = fmt.Sprintf("%d..%d", a.minLen, a.maxLen)
+		lens = fmt.Sprintf("%d..%d", ded.MinLen, ded.MaxLen)
 	}
-	if ns := a.Nulls(); ns > 0 {
-		return fmt.Sprintf("[Array %d×null] of %s", ns, lens)
-	}
-	return fmt.Sprintf("Array of %s", lens)
+	return fmt.Sprintf("Array of %s %s", lens, numsLabel(&ded.dedBase))
 }
 
 func (s *Summary) array(a *Array) error {
@@ -297,7 +307,10 @@ func (s *Summary) array(a *Array) error {
 }
 
 func UnionLabel(u *Union) string {
-	return fmt.Sprintf("Union of %d types", len(u.Variants))
+	return fmt.Sprintf("Union of %d types %s",
+		len(u.Variants),
+		numsLabel(&u.dedBase),
+	)
 }
 
 func (s *Summary) union(u *Union) error {

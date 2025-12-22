@@ -1,29 +1,43 @@
+/*
+A tool to analyse the structure of JSON from a set of example JSON values.
+Copyright (C) 2025  Marcus Perlick
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package jsum
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sort"
 )
 
 type Object struct {
 	dedBase
-	Members map[string]Member
-	Count   int
+	Members map[string]Member `json:"members"`
 }
 
 type Member struct {
-	Occurence int
-	Ded       Deducer
+	Occurence int     `json:"occurence"`
+	Ded       Deducer `json:"type"`
 }
 
-func newObjJson(cfg *Config, m map[string]any) *Object {
+func newObjJson(cfg *Config, count, nulln int) *Object {
 	res := &Object{
-		dedBase: dedBase{cfg: cfg},
+		dedBase: dedBase{cfg: cfg, Count: count, Null: nulln},
 		Members: make(map[string]Member),
-		Count:   1,
-	}
-	for k, v := range m {
-		res.Members[k] = Member{Occurence: 1, Ded: Deduce(cfg, v)}
 	}
 	return res
 }
@@ -36,18 +50,20 @@ func (o *Object) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	switch vjt {
 	case 0:
-		o.null++
+		o.Count++
+		o.Null++
 		return o
 	case JsonObject:
 		o.Count++
-		switch vo := v.(type) {
+		switch v := v.(type) {
 		case map[string]any:
-			o.mergeMap(vo)
+			o.mergeMap(v)
+		default:
+			panic(fmt.Errorf("object example of type %T", v))
 		}
-		// TODO more Object types?
 		return o
 	}
-	return newAny(o.cfg, o.null)
+	return newAny(o.cfg, o.Count+1, o.Null) // Why not union?
 }
 
 func (o *Object) mergeMap(m map[string]any) {
@@ -107,6 +123,9 @@ func (o *Object) JSONSchema() any {
 		if t.Occurence == o.Count {
 			res.Required = append(res.Required, n)
 		}
+	}
+	if o.Null > 0 {
+		return []any{"null", res}
 	}
 	return res
 }

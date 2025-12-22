@@ -1,9 +1,15 @@
+git.fractalqb.de/fractalqb/eloc v0.3.0 h1:swBzYbcOzdXnUY8Nr/ViaXTANX6T/DUtlh8CocGGXtk=
+git.fractalqb.de/fractalqb/eloc v0.3.0/go.mod h1:K4IkNAzguub9KlhoGrVGCvnSRKaf2v4CmtUub2Eq6iE=
+git.fractalqb.de/fractalqb/testerr v0.1.1 h1:nKJbuZzDBDkfwb32C21jPOoRbe+9xy8QBXKrvt1kZtE=
+git.fractalqb.de/fractalqb/testerr v0.1.1/go.mod h1:9QIePAgsw5T/fD2CZmMUFs9xdBxryombyGoA812O288=
 git.fractalqb.de/fractalqb/tetrta v0.1.0 h1:z/6uRfUAYXa4H+VBLWOrasrM245WWHRz/lie5Ws/x9o=
 git.fractalqb.de/fractalqb/tetrta v0.1.0/go.mod h1:z2TGsbU5d4iXDbW0krB+sHbVRfcb9GbeYy+u/RJRYVo=
 github.com/gdamore/encoding v1.0.1 h1:YzKZckdBL6jVt2Gc+5p82qhrGiqMdG/eNs6Wy0u3Uhw=
 github.com/gdamore/encoding v1.0.1/go.mod h1:0Z0cMFinngz9kS1QfMjCP8TY7em3bZYeeklsSDPivEo=
-github.com/gdamore/tcell/v2 v2.13.4 h1:k4fdtdHGvLsLr2RttPnWEGTZEkEuTaL+rL6AOVFyRWU=
-github.com/gdamore/tcell/v2 v2.13.4/go.mod h1:+Wfe208WDdB7INEtCsNrAN6O2m+wsTPk1RAovjaILlo=
+github.com/gdamore/tcell/v2 v2.13.5 h1:YvWYCSr6gr2Ovs84dXbZLjDuOfQchhj8buOEqY52rpA=
+github.com/gdamore/tcell/v2 v2.13.5/go.mod h1:+Wfe208WDdB7INEtCsNrAN6O2m+wsTPk1RAovjaILlo=
+github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
+github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/lucasb-eyer/go-colorful v1.3.0 h1:2/yBRLdWBZKrf7gB40FoiKfAWYQ0lqNcbuQwVHXptag=
 github.com/lucasb-eyer/go-colorful v1.3.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/rivo/tview v0.42.0 h1:b/ftp+RxtDsHSaynXTbJb+/n/BxDEi+W3UfF5jILK6c=

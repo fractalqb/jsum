@@ -1,3 +1,21 @@
+/*
+A tool to analyse the structure of JSON from a set of example JSON values.
+Copyright (C) 2025  Marcus Perlick
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package jsum
 
 import (
@@ -15,12 +33,12 @@ const (
 type String struct {
 	dedBase
 	Stats  map[string]int
-	format Format
+	Format Format `json:"format,omitempty"`
 }
 
-func NewString(cfg *Config, nulln int) *String {
+func newString(cfg *Config, count, nulln int) *String {
 	return &String{
-		dedBase: dedBase{cfg: cfg, null: nulln},
+		dedBase: dedBase{cfg: cfg, Count: count, Null: nulln},
 		Stats:   make(map[string]int),
 	}
 }
@@ -30,29 +48,27 @@ func (a *String) Accepts(v any) bool { return JsonTypeOf(v) == JsonString }
 func (a *String) Example(v any) Deducer {
 	vjt := JsonTypeOf(v)
 	if vjt == JsonString {
+		a.Count++
 		switch v := v.(type) {
 		case string:
 			if fmt := stringFormat(v); fmt == 0 {
-				a.format = 0
+				a.Format = 0
 			} else if len(a.Stats) == 0 {
-				a.format = fmt
-			} else if fmt != a.format {
-				a.format = 0
+				a.Format = fmt
+			} else if fmt != a.Format {
+				a.Format = 0
 			}
 			a.Stats[v]++
 		case time.Time:
 			if len(a.Stats) == 0 {
-				a.format = DateTimeFormat
+				a.Format = DateTimeFormat
 			}
 			s := v.Format(time.RFC3339)
 			a.Stats[s]++
 		}
 		return a
 	}
-	return &Union{
-		dedBase:  dedBase{cfg: a.cfg},
-		Variants: []Deducer{a, Deduce(a.cfg, v)},
-	}
+	return newUnion(a, Deduce(a.cfg, v))
 }
 
 func stringFormat(s string) Format {
@@ -94,7 +110,7 @@ func (a *String) JSONSchema() any {
 	scm := jscmString{
 		jscmType: jscmType{Type: "string"},
 	}
-	switch a.format {
+	switch a.Format {
 	case 0:
 		mi, ma := math.MaxInt, 0
 		for s := range a.Stats {
@@ -108,6 +124,9 @@ func (a *String) JSONSchema() any {
 		*scm.MaxLen = ma
 	case DateTimeFormat:
 		scm.Format = "date-time"
+	}
+	if a.Null > 0 {
+		return []any{"null", scm}
 	}
 	return scm
 }

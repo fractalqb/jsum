@@ -1,3 +1,21 @@
+/*
+A tool to analyse the structure of JSON from a set of example JSON values.
+Copyright (C) 2025  Marcus Perlick
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package jsum
 
 import (
@@ -7,7 +25,18 @@ import (
 
 type Union struct {
 	dedBase
-	Variants []Deducer
+	Variants []Deducer `json:"variants"`
+}
+
+func newUnion(a, b Deducer) *Union {
+	return &Union{
+		dedBase: dedBase{
+			cfg:   a.super().cfg,
+			Count: a.super().Count + b.super().Count,
+			Null:  a.super().Null + b.super().Null,
+		},
+		Variants: []Deducer{a, b},
+	}
 }
 
 func (u *Union) Accepts(v any) bool {
@@ -20,8 +49,14 @@ func (u *Union) Accepts(v any) bool {
 }
 
 func (u *Union) Example(v any) Deducer {
-	for _, d := range u.Variants {
+	u.Count++
+	if v == nil {
+		u.Null++
+		return u
+	}
+	for i, d := range u.Variants {
 		if d.Accepts(v) {
+			u.Variants[i] = d.Example(v)
 			return u
 		}
 	}
@@ -65,6 +100,9 @@ func (u *Union) JSONSchema() any {
 	scm := jscmOneOf{OneOf: make([]any, len(u.Variants))}
 	for i, v := range u.Variants {
 		scm.OneOf[i] = v.JSONSchema()
+	}
+	if u.Null > 0 {
+		scm.OneOf = append(scm.OneOf, "null")
 	}
 	return scm
 }

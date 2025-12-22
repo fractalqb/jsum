@@ -1,8 +1,27 @@
+/*
+A tool to analyse the structure of JSON from a set of example JSON values.
+Copyright (C) 2025  Marcus Perlick
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package main
 
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,10 +42,13 @@ var (
 		DedupNumber: jsum.DedpuNumberIntFloat | jsum.DedupNumberNeg,
 		DedupString: jsum.DedupStringEmpty,
 	}
-	fTreeStyle           = "draw"
-	fStrMax              = 6
-	fTypes               bool
-	fArgs, fOut, fSchema string
+	fTreeStyle = "draw"
+	fStrMax    = 6
+	fTypes     bool
+	fArgs      string
+	fOut       string
+	fState     string
+	fSchema    string
 )
 
 const (
@@ -47,8 +69,13 @@ func init() {
 
 func usage() {
 	w := flag.CommandLine.Output()
-	fmt.Print("Generate a summary from example JSON or YAML files.\n\n")
-	fmt.Fprintln(w, `Usage: jsum [flags] <JSON/YAML file>...
+	fmt.Fprintln(w, `Generate a summary from example JSON or YAML files.
+
+  Usage: jsum [flags] <JSON/YAML file>|'-'...
+
+Without printing and schema generation, JSUM will launch an interactive browser
+for the summary in the terminal.
+
 FLAGS:`)
 	flag.PrintDefaults()
 }
@@ -67,28 +94,39 @@ func main() {
 		"Print summary to file ('-' writes to stdout)")
 	flag.StringVar(&fSchema, "schema", fSchema,
 		"Generate JSON Schema file")
+	flag.StringVar(&fState, "state", fState,
+		`Keep deduced schema in state file.
+This can be used for incremental refinement or simply to browse without
+analysing the examples again.`)
 	flag.Parse()
 
 	var (
-		scm        jsum.Deducer = jsum.NewUnknown(&cfg)
-		samples, n int
-		err        error
+		scm     = loadState(fState, &cfg)
+		samples int
+		err     error
 	)
+
 	switch {
 	case fArgs == "-":
 		scm, samples = readArgs(os.Stdin, scm)
 	case fArgs != "":
 		scm, samples = readArgsFile(fArgs, scm)
-	case len(flag.Args()) > 0:
-		for _, arg := range flag.Args() {
-			if scm, n, err = readFile(arg, scm); err != nil {
-				log.Fatal(err)
-			}
-			samples += n
+	}
+
+	for _, arg := range flag.Args() {
+		var n int
+		if arg == "-" {
+			dec := json.NewDecoder(os.Stdin)
+			scm, n = read(dec, scm)
+		} else if scm, n, err = readFile(arg, scm); err != nil {
+			log.Fatal(err)
 		}
-	default:
-		dec := json.NewDecoder(os.Stdin)
-		scm, samples = read(dec, scm)
+		samples += n
+	}
+
+	log.Printf("read %d sample records", samples)
+	if fState != "" && samples > 0 {
+		writeState(fState, scm)
 	}
 
 	if fOut == "" && fSchema == "" {
@@ -112,9 +150,6 @@ func main() {
 		case "i", "items":
 			tstyle = tetrta.ItemTree()
 		}
-		head := fmt.Sprintf("Deduced from %d samples:", samples)
-		fmt.Println(head)
-		fmt.Println(strings.Repeat("=", len(head)))
 		sum := jsum.NewSummary(w, &jsum.SummaryConfig{
 			TreeStyle: tstyle,
 			StringMax: fStrMax,
@@ -143,7 +178,7 @@ func main() {
 			tdefs := dedup.ReusedTypes()
 			fmt.Fprintf(w, "\nFound %d distinct types\n", len(tdefs))
 			for _, def := range tdefs {
-				head = fmt.Sprintf("\nOccurs %d times:", len(def.Copies())+1)
+				head := fmt.Sprintf("\nOccurs %d times:", len(def.Copies())+1)
 				fmt.Println(head)
 				fmt.Println(strings.Repeat("-", len(head)-1))
 				sum.Print(def)
@@ -214,4 +249,54 @@ func readFile(name string, d jsum.Deducer) (_ jsum.Deducer, n int, err error) {
 	dec := json.NewDecoder(rd)
 	d, n = read(dec, d)
 	return d, n, nil
+}
+
+func loadState(name string, cfg *jsum.Config) jsum.Deducer {
+	if name == "" {
+		return jsum.NewUnknown(cfg)
+	}
+	log.Println("read state", name)
+	f, err := os.Open(name)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return jsum.NewUnknown(cfg)
+	case err != nil:
+		log.Fatal(err)
+	}
+	defer f.Close()
+	var sio jsum.StateIO
+	state, err := sio.Read(f, cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return state
+}
+
+func writeState(name string, scm jsum.Deducer) {
+	log.Panicln("write state", name)
+	f, err := os.Create(name + "~")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	var sio jsum.StateIO
+	if err := sio.Write(f, scm); err != nil {
+		log.Fatal(err)
+	}
+	log.Println("stat write dedup", sio.StrDup, "/", sio.StrCount)
+	if err := f.Close(); err != nil {
+		log.Fatal(err)
+	}
+	if _, err := os.Stat(name); err == nil {
+		ext := filepath.Ext(name)
+		base := filepath.Base(name[:len(name)-len(ext)])
+		if f, err := os.CreateTemp(filepath.Dir(name), base+"-*"+ext); err != nil {
+			log.Fatal(err)
+		} else {
+			base = f.Name()
+			f.Close()
+		}
+		os.Rename(name, base)
+	}
+	os.Rename(name+"~", name)
 }

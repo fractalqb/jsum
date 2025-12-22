@@ -1,3 +1,21 @@
+/*
+A tool to analyse the structure of JSON from a set of example JSON values.
+Copyright (C) 2025  Marcus Perlick
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package jsum
 
 import (
@@ -30,6 +48,7 @@ func (jt JsonType) Scalar() bool {
 	return jt >= JsonString && jt <= JsonBoolean
 }
 
+// JsonTypeOf detects: nil, string, number, bool, object, array
 func JsonTypeOf(v any) JsonType {
 	switch v.(type) {
 	case nil:
@@ -85,12 +104,13 @@ type Deducer interface {
 
 type dedBase struct {
 	cfg    *Config
-	null   int
+	Count  int `json:"count"`
+	Null   int `json:"null,omitempty"`
 	orig   Deducer
 	copies []Deducer
 }
 
-func (d *dedBase) Nulls() int { return d.null }
+func (d *dedBase) Nulls() int { return d.Null }
 
 func (d *dedBase) Copies() []Deducer { return d.copies }
 
@@ -98,7 +118,7 @@ func (d *dedBase) startHash(jt JsonType) *maphash.Hash {
 	h := new(maphash.Hash)
 	h.SetSeed(hashSeed)
 	binary.Write(h, hashEndian, int32(jt))
-	if d.null > 0 {
+	if d.Null > 0 {
 		h.WriteByte(0)
 	} else {
 		h.WriteByte(1)
@@ -107,7 +127,7 @@ func (d *dedBase) startHash(jt JsonType) *maphash.Hash {
 }
 
 func (lhs *dedBase) Equal(rhs *dedBase) bool {
-	return lhs.null == rhs.null
+	return lhs.Null == rhs.Null
 }
 
 func Deduce(cfg *Config, v any) Deducer {
