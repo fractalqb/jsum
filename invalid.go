@@ -22,9 +22,11 @@ type Invalid struct {
 	error
 }
 
-func (Invalid) Accepts(_ any) bool { return false }
+func newInvalid(err error) Invalid { return Invalid{err} }
 
-func (i Invalid) Example(v any) Deducer { return i }
+func (Invalid) Accepts(JsonType) bool { return false }
+
+func (i Invalid) Example(any, JsonType) Deducer { return i }
 
 func (Invalid) Nulls() int { return -1 }
 
@@ -35,7 +37,7 @@ func (Invalid) Equal(_ Deducer) bool { return false }
 func (Invalid) Copies() []Deducer { return nil }
 
 func (i Invalid) JSONSchema() any {
-	return i.error // TODO
+	return i.error // TODO / OK?
 }
 
 var invBase dedBase

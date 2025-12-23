@@ -27,5 +27,5 @@ var (
 	_ Deducer = (*String)(nil)
 	_ Deducer = (*Union)(nil)
 	_ Deducer = (*Any)(nil)
-	_ Deducer = (*Invalid)(nil)
+	_ Deducer = Invalid{}
 )

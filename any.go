@@ -28,9 +28,9 @@ func newAny(cfg *Config, count, nulln int) *Any {
 	}}
 }
 
-func (*Any) Accepts(v any) bool { return true }
+func (*Any) Accepts(jt JsonType) bool { return true }
 
-func (a *Any) Example(v any) Deducer {
+func (a *Any) Example(v any, _ JsonType) Deducer {
 	a.Count++
 	if v == nil {
 		a.Null++

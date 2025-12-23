@@ -104,16 +104,16 @@ func browseObject(scm *jsum.Object, lff lbFmtFunc, srb searchBuild) (res *tview.
 	slices.Sort(nms)
 	var sb strings.Builder
 	for _, a := range nms {
-		fmt.Fprintf(&sb, "[::b]\"%s\"[::-] ", a)
 		m := scm.Members[a]
 		if m.Occurence < scm.Count {
-			fmt.Fprintf(&sb, "optional (%d/%d %.0f%%)",
+			fmt.Fprintf(&sb, "[::b]\"%s\"[::-] [blue::]optional[-::] (%d/%d %.0f%%)",
+				a,
 				m.Occurence,
 				scm.Count,
 				100*float64(m.Occurence)/float64(scm.Count),
 			)
 		} else {
-			fmt.Fprintf(&sb, "mandatory (%d×)", m.Occurence)
+			fmt.Fprintf(&sb, "[::bu]\"%s\"[::-] [orange::]mandatory[-::] (%d×)", a, m.Occurence)
 		}
 		sb.WriteByte(':')
 		fldMember := folder{

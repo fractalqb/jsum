@@ -130,16 +130,21 @@ analysing the examples again.`)
 	}
 
 	if fOut == "" && fSchema == "" {
+		log.Print("no output, no schema generation – staring interactive browser")
 		newBrowser(scm, samples).run()
-	} else {
+	} else if fOut != "" {
 		var w io.Writer = os.Stdout
-		if fOut != "" && fOut != "-" {
+		if fOut != "-" {
+			log.Print("writing jsum summary to stdout")
 			if tmp, err := os.Create(fOut); err != nil {
 				log.Fatal(err)
 			} else {
 				defer tmp.Close()
 				w = tmp
 			}
+			log.Println("writing jsum summary to", fOut)
+		} else {
+			log.Print("writing jsum summary to stdout")
 		}
 		var tstyle *tetrta.TreeStyle
 		switch fTreeStyle {
@@ -225,7 +230,11 @@ func read(dec decoder, d jsum.Deducer) (jsum.Deducer, int) {
 		case err != nil:
 			log.Fatal(err)
 		}
-		d = d.Example(jv)
+		jt := jsum.JsonTypeOf(jv)
+		if !jt.Valid() {
+			log.Fatalf("no deduced type for %T", jv)
+		}
+		d = d.Example(jv, jt)
 		if i, ok := d.(jsum.Invalid); ok {
 			log.Fatal(i)
 		}
@@ -264,8 +273,12 @@ func loadState(name string, cfg *jsum.Config) jsum.Deducer {
 		log.Fatal(err)
 	}
 	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		log.Fatal(err)
+	}
 	var sio jsum.StateIO
-	state, err := sio.Read(f, cfg)
+	state, err := sio.ReadState(f, cfg, stat.Size())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -273,14 +286,14 @@ func loadState(name string, cfg *jsum.Config) jsum.Deducer {
 }
 
 func writeState(name string, scm jsum.Deducer) {
-	log.Panicln("write state", name)
+	log.Println("write state", name)
 	f, err := os.Create(name + "~")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer f.Close()
 	var sio jsum.StateIO
-	if err := sio.Write(f, scm); err != nil {
+	if err := sio.WriteState(f, scm); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("stat write dedup", sio.StrDup, "/", sio.StrCount)

@@ -9,7 +9,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require git.fractalqb.de/fractalqb/eloc v0.3.0
+require git.fractalqb.de/fractalqb/eloc v0.4.0
 
 require github.com/kylelemons/godebug v1.1.0 // indirect
 

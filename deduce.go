@@ -25,57 +25,104 @@ import (
 	"time"
 )
 
-type JsonType int
+type (
+	jsonType    uint16
+	jsonVariant uint16
+)
+type JsonType struct {
+	t jsonType
+	v jsonVariant
+}
+
+func (t JsonType) Valid() bool  { return t.t > 0 }
+func (t JsonType) Scalar() bool { return t.t.scalar() }
 
 const (
-	JsonObject JsonType = iota + 1
-	JsonArray
-	JsonString
-	JsonNumber
-	JsonBoolean
+	jsonNull jsonType = iota + 1
+	jsonObject
+	jsonArray
+	jsonString
+	jsonNumber
+	jsonBoolean
 
 	jsonUnknown
 	jsonUnion
 	jsonAny
 )
 
-var (
-	hashEndian = binary.LittleEndian
-	hashSeed   = maphash.MakeSeed()
-)
-
-func (jt JsonType) Scalar() bool {
-	return jt >= JsonString && jt <= JsonBoolean
+func (jt jsonType) scalar() bool {
+	return jt >= jsonString && jt <= jsonBoolean
 }
+
+const (
+	jsonStrString jsonVariant = iota
+	jsonStrTime
+	jsonNumInt
+	jsonNumUint
+	jsonNumInt64
+	jsonNumUint64
+	jsonNumInt32
+	jsonNumUint32
+	jsonNumInt16
+	jsonNumUint16
+	jsonNumInt8
+	jsonNumUint8
+	jsonNumFloat32
+	jsonNumFloat64
+	jsonObjRMap
+	jsonObjStrAny
+	jsonArrAny
+	jsonArrRSlice
+)
 
 // JsonTypeOf detects: nil, string, number, bool, object, array
 func JsonTypeOf(v any) JsonType {
 	switch v.(type) {
 	case nil:
-		return 0
+		return JsonType{t: jsonNull}
 	case string:
-		return JsonString
-	case int, uint, int64, uint64, int32, uint32, int16, uint16, int8, uint8:
-		return JsonNumber
-	case float32, float64:
-		return JsonNumber
+		return JsonType{t: jsonString, v: jsonStrString}
+	case int:
+		return JsonType{t: jsonNumber, v: jsonNumInt}
+	case uint:
+		return JsonType{t: jsonNumber, v: jsonNumUint}
+	case int64:
+		return JsonType{t: jsonNumber, v: jsonNumInt64}
+	case uint64:
+		return JsonType{t: jsonNumber, v: jsonNumUint64}
+	case int32:
+		return JsonType{t: jsonNumber, v: jsonNumInt32}
+	case uint32:
+		return JsonType{t: jsonNumber, v: jsonNumUint32}
+	case int16:
+		return JsonType{t: jsonNumber, v: jsonNumInt16}
+	case uint16:
+		return JsonType{t: jsonNumber, v: jsonNumUint16}
+	case int8:
+		return JsonType{t: jsonNumber, v: jsonNumInt8}
+	case uint8:
+		return JsonType{t: jsonNumber, v: jsonNumUint8}
+	case float32:
+		return JsonType{t: jsonNumber, v: jsonNumFloat32}
+	case float64:
+		return JsonType{t: jsonNumber, v: jsonNumFloat64}
 	case bool:
-		return JsonBoolean
+		return JsonType{t: jsonBoolean}
 	case time.Time:
-		return JsonString
+		return JsonType{t: jsonString, v: jsonStrTime}
 	case map[string]any:
-		return JsonObject
+		return JsonType{t: jsonObject, v: jsonObjStrAny}
 	case []any:
-		return JsonArray
+		return JsonType{t: jsonArray, v: jsonArrAny}
 	}
 	rty := reflect.TypeOf(v)
 	switch rty.Kind() {
-	case reflect.Struct:
-		return JsonObject
+	case reflect.Map:
+		return JsonType{t: jsonObject, v: jsonObjRMap}
 	case reflect.Slice:
-		return JsonArray
+		return JsonType{t: jsonArray, v: jsonArrRSlice}
 	}
-	return 0
+	return JsonType{}
 }
 
 type DedupHash map[uint64][]Deducer
@@ -92,8 +139,8 @@ func (dh DedupHash) ReusedTypes() (res []Deducer) {
 }
 
 type Deducer interface {
-	Accepts(v any) bool
-	Example(v any) Deducer
+	Accepts(jt JsonType) bool
+	Example(v any, jt JsonType) Deducer
 	Nulls() int
 	Hash(dh DedupHash) uint64
 	Copies() []Deducer
@@ -114,7 +161,7 @@ func (d *dedBase) Nulls() int { return d.Null }
 
 func (d *dedBase) Copies() []Deducer { return d.copies }
 
-func (d *dedBase) startHash(jt JsonType) *maphash.Hash {
+func (d *dedBase) startHash(jt jsonType) *maphash.Hash {
 	h := new(maphash.Hash)
 	h.SetSeed(hashSeed)
 	binary.Write(h, hashEndian, int32(jt))
@@ -132,8 +179,13 @@ func (lhs *dedBase) Equal(rhs *dedBase) bool {
 
 func Deduce(cfg *Config, v any) Deducer {
 	tmp := *NewUnknown(cfg)
-	return tmp.Example(v)
+	return tmp.Example(v, JsonTypeOf(v))
 }
+
+var (
+	hashEndian = binary.LittleEndian
+	hashSeed   = maphash.MakeSeed()
+)
 
 func addNotEqual(ds []Deducer, d Deducer) []Deducer {
 	for _, e := range ds {

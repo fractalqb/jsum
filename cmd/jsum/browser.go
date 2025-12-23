@@ -32,14 +32,13 @@ import (
 )
 
 const (
-	pgTree                = "tree"
-	pgHelp                = "help"
-	pgStat                = "stat"
-	pgSearchTerm          = "search-term"
-	pgSearchMatch         = "search-match"
-	helpWidth, helpHeight = 46, 14
-	slsWidth, slsRows     = 38, 12
-	statDefault           = "Press ? for help"
+	pgTree            = "tree"
+	pgHelp            = "help-%d"
+	pgStat            = "stat"
+	pgSearchTerm      = "search-term"
+	pgSearchMatch     = "search-match"
+	slsWidth, slsRows = 38, 12
+	statDefault       = "Press ? for help"
 )
 
 type searchTerm struct {
@@ -61,7 +60,7 @@ type browser struct {
 	stat      *tview.TextView
 	srchTerm  *tview.TextArea
 	srchMatch *tview.Table
-	help      *tview.TextView
+	help      []*helpView
 	pgsMain   *tview.Pages
 	pgsFoot   *tview.Pages
 
@@ -85,7 +84,7 @@ func newBrowser(scm jsum.Deducer, samples int) *browser {
 		stat:      tview.NewTextView().SetText(statDefault).SetDynamicColors(true),
 		srchTerm:  tview.NewTextArea(),
 		srchMatch: tview.NewTable().SetSelectable(true, false),
-		help:      tview.NewTextView().SetSize(helpHeight, helpWidth).SetText(helpText),
+		help:      helpViews(),
 		pgsMain:   tview.NewPages(),
 		pgsFoot:   tview.NewPages(),
 
@@ -101,26 +100,49 @@ func newBrowser(scm jsum.Deducer, samples int) *browser {
 
 	b.stat.SetTextStyle(tcell.StyleDefault.Reverse(true))
 
-	b.help.SetBorder(true).SetTitle(" Help (ESC to close) ")
-	b.help.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		b.pgsMain.SendToFront(pgTree)
-		return nil
-	})
-
-	b.srchMatch.SetSelectionChangedFunc(b.matchSelected).
+	b.srchMatch.
+		SetSelectionChangedFunc(b.matchSelected).
 		SetInputCapture(b.searchMatchInput).
 		SetBorder(true).
 		SetTitle(" Search matches ")
 
-	b.pgsMain.AddPage(pgHelp, modal(b.help, "c", helpWidth, helpHeight), true, true).
+	for i, help := range b.help {
+		help.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			switch event.Key() {
+			case tcell.KeyRight:
+				b.pgsMain.SendToBack(fmt.Sprintf(pgHelp, i))
+				j := (i + 1) % len(b.help)
+				b.pgsMain.SendToFront(fmt.Sprintf(pgHelp, j))
+			case tcell.KeyLeft:
+				b.pgsMain.SendToBack(fmt.Sprintf(pgHelp, i))
+				j := i - 1
+				if j < 0 {
+					j = len(b.help) - 1
+				}
+				b.pgsMain.SendToFront(fmt.Sprintf(pgHelp, j))
+			default:
+				b.pgsMain.SendToFront(pgTree)
+			}
+			return nil
+		})
+		b.pgsMain.AddPage(
+			fmt.Sprintf(pgHelp, i),
+			modal(help, "c", help.txtCols, help.txtRows),
+			true, true,
+		)
+	}
+
+	b.pgsMain.
 		AddPage(pgSearchMatch, modal(b.srchMatch, "R", slsWidth, slsRows+2), true, true).
 		AddPage(pgTree, b.tree, true, true)
 
-	b.srchTerm.SetTextStyle(tcell.StyleDefault.Reverse(true)).
+	b.srchTerm.
+		SetTextStyle(tcell.StyleDefault.Reverse(true)).
 		SetChangedFunc(b.searchChange).
 		SetInputCapture(b.searchTermInput)
 
-	b.pgsFoot.AddPage(pgSearchTerm, b.srchTerm, true, true).
+	b.pgsFoot.
+		AddPage(pgSearchTerm, b.srchTerm, true, true).
 		AddPage(pgStat, b.stat, true, true)
 
 	for s, ns := range srb {
@@ -179,7 +201,7 @@ func (b *browser) treeInput(evt *tcell.EventKey) *tcell.EventKey {
 		b.pgsMain.SendToFront(pgSearchMatch)
 		b.app.SetFocus(b.srchTerm)
 	case '?':
-		b.pgsMain.SendToFront(pgHelp)
+		b.pgsMain.SendToFront(fmt.Sprintf(pgHelp, 0))
 	}
 	return evt
 }
@@ -341,8 +363,8 @@ type folder struct {
 
 func stdFolder(text string) folder {
 	return folder{
-		open:  "▼ ",
-		close: "▶ ",
+		open:  "[lightgreen]▼[-] ",
+		close: "[lightgreen]▶[-] ",
 		text:  text,
 	}
 }
@@ -431,16 +453,3 @@ func modal(p tview.Primitive, a string, width, height int) tview.Primitive {
 			).AddItem(nil, 0, 1, false)
 	}
 }
-
-const helpText = `j, 🠋, 🠊          : Move down by one node
-k, 🠉, 🠈          : Move up by one node
-g, home          : Move to the top
-G, end           : Move to the bottom
-J                : Move down one level
-K, S-🠈           : Move up one level
-Ctrk-F, page down: Move down by one page
-Ctrl-B, page up  : Move up by one page
-Space, Enter     : Toggle node folding
-m / M            : Fold siblings / subtree
-r / R            : Unfold siblings / subtree
-s                : Search nodes`

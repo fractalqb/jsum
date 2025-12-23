@@ -20,7 +20,6 @@ package jsum
 
 import (
 	"encoding/binary"
-	"fmt"
 )
 
 type Array struct {
@@ -40,41 +39,37 @@ func newArrJson(cfg *Config, count, nulln int) *Array {
 	return res
 }
 
-func (a *Array) Accepts(v any) bool {
-	return JsonTypeOf(v) == JsonArray
-}
+func (a *Array) Accepts(jt JsonType) bool { return jt.t == jsonArray }
 
-func (a *Array) Example(v any) Deducer {
-	vjt := JsonTypeOf(v)
-	switch vjt {
-	case 0:
+func (a *Array) Example(v any, jt JsonType) Deducer {
+	if jt.t == jsonNull {
 		a.Count++
 		a.Null++
 		return a
-	case JsonArray:
+	}
+	switch jt.v {
+	case jsonArrAny:
 		a.Count++
-		switch v := v.(type) {
-		case []any:
-			l := len(v)
-			if a.MinLen < 0 {
-				a.MinLen, a.MaxLen = l, l
-			} else {
-				a.MinLen = min(a.MinLen, l)
-				a.MaxLen = max(a.MaxLen, l)
-			}
-			for _, e := range v {
-				a.Elem = a.Elem.Example(e)
-			}
-		default:
-			panic(fmt.Errorf("array example of type %T", v))
+		v := v.([]any)
+		l := len(v)
+		if a.MinLen < 0 {
+			a.MinLen, a.MaxLen = l, l
+		} else if l < a.MinLen {
+			a.MinLen = l
+		} else {
+			a.MaxLen = max(a.MaxLen, l)
+		}
+		for _, e := range v {
+			a.Elem = a.Elem.Example(e, JsonTypeOf(e))
 		}
 		return a
+		// TODO case jsonArrRSlice:
 	}
-	return newAny(a.cfg, a.Count+1, a.Null)
+	return newAny(a.cfg, a.Count+1, a.Null) // TODO Why not union?
 }
 
 func (a *Array) Hash(dh DedupHash) uint64 {
-	hash := a.dedBase.startHash(JsonArray)
+	hash := a.dedBase.startHash(jsonArray)
 	if a.MaxLen == 0 {
 		hash.WriteByte(0)
 	} else {

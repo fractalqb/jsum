@@ -38,11 +38,11 @@ func TestStateIO_rdString(t *testing.T) {
 		buf bytes.Buffer
 		sio StateIO
 	)
-	testerr.Shall(sio.Write(&buf, &Union{Variants: []Deducer{
+	testerr.Shall(sio.WriteState(&buf, &Union{Variants: []Deducer{
 		&String{Stats: map[string]int{"foo": 1}},
 		&String{Stats: map[string]int{"foo": 2}},
 	}})).BeNil(t)
-	testerr.Shall1(sio.Read(&buf, &testCfg)).BeNil(t)
+	testerr.Shall1(sio.ReadState(&buf, &testCfg, 0)).BeNil(t)
 }
 
 func testDedEq(t *testing.T, l, r Deducer) bool {
@@ -64,8 +64,8 @@ func TestTestIO_writeRead(t *testing.T) {
 			buf bytes.Buffer
 			sio StateIO
 		)
-		testerr.Shall(sio.Write(&buf, ded)).BeNil(t)
-		ede := testerr.Shall1(sio.Read(&buf, &testCfg)).BeNil(t)
+		testerr.Shall(sio.WriteState(&buf, ded)).BeNil(t)
+		ede := testerr.Shall1(sio.ReadState(&buf, &testCfg, 0)).BeNil(t)
 		testDedEq(t, ede, ded)
 	}
 
@@ -126,5 +126,51 @@ func TestTestIO_writeRead(t *testing.T) {
 	})
 	t.Run("Any", func(t *testing.T) {
 		testDedWriteRead(t, &Any{dedBase: testDedBase})
+	})
+}
+
+func TestStateIO_minSizes(t *testing.T) {
+	const testString = "This is a medium length string"
+	t.Run("statMinStrLen", func(t *testing.T) {
+		var buf bytes.Buffer
+		sio := StateIO{
+			wr:   &buf,
+			strs: make(map[string]int64),
+			sids: make(map[int64]string),
+		}
+		sio.wrString(testString)
+		buf.Reset()
+		sio.wrString(testString)
+		if l := buf.Len(); l != statMinStrLen {
+			t.Errorf("unexpected min string len: %d", l)
+		}
+	})
+	t.Run("statMinMbrSz", func(t *testing.T) {
+		var buf bytes.Buffer
+		sio := StateIO{
+			wr:   &buf,
+			strs: make(map[string]int64),
+			sids: make(map[int64]string),
+		}
+		sio.wrString(testString)
+		buf.Reset()
+		sio.wrMbr(testString, Member{Ded: &Any{}})
+		if l := buf.Len(); l != statMinMbrSz {
+			t.Errorf("unexpected member size: %d", l)
+		}
+	})
+	t.Run("statMinVarSz", func(t *testing.T) {
+		var buf bytes.Buffer
+		sio := StateIO{
+			wr:   &buf,
+			strs: make(map[string]int64),
+			sids: make(map[int64]string),
+		}
+		sio.wrString(testString)
+		buf.Reset()
+		sio.wrDed(&Any{})
+		if l := buf.Len(); l != statMinVarSz {
+			t.Errorf("unexpected variant size: %d", l)
+		}
 	})
 }

@@ -28,16 +28,15 @@ func newBool(cfg *Config, count, nulln int) *Boolean {
 	return &Boolean{dedBase: dedBase{cfg: cfg, Count: count, Null: nulln}}
 }
 
-func (a *Boolean) Accepts(v any) bool { return JsonTypeOf(v) == JsonBoolean }
+func (a *Boolean) Accepts(jt JsonType) bool { return jt.t == jsonBoolean }
 
-func (a *Boolean) Example(v any) Deducer {
-	vjt := JsonTypeOf(v)
-	switch vjt {
-	case 0:
+func (a *Boolean) Example(v any, jt JsonType) Deducer {
+	switch jt.t {
+	case jsonNull:
 		a.Count++
 		a.Null++
 		return a
-	case JsonBoolean:
+	case jsonBoolean:
 		a.Count++
 		if v.(bool) {
 			a.TrueNo++
@@ -50,7 +49,7 @@ func (a *Boolean) Example(v any) Deducer {
 }
 
 func (a *Boolean) Hash(dh DedupHash) uint64 {
-	hash := a.dedBase.startHash(JsonBoolean)
+	hash := a.dedBase.startHash(jsonBoolean)
 	if a.cfg.DedupBool&DedupBoolFalse != 0 {
 		if a.FalseNo > 0 {
 			hash.WriteByte(1)

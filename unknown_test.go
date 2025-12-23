@@ -23,13 +23,13 @@ import "testing"
 func TestUnknow_toBool(t *testing.T) {
 	var cfg Config
 	var u Deducer = NewUnknown(&cfg)
-	u = u.Example(true)
+	u = u.Example(true, JsonTypeOf(true))
 	if b, ok := u.(*Boolean); !ok {
 		t.Fatalf("deduced not bool but %T", u)
 	} else if b.TrueNo != 1 {
 		t.Errorf("true count %d not 1", b.TrueNo)
 	}
-	u = u.Example(true)
+	u = u.Example(true, JsonTypeOf(true))
 	if b, ok := u.(*Boolean); !ok {
 		t.Fatalf("deduced not bool but %T", u)
 	} else if b.TrueNo != 2 {

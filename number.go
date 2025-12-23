@@ -39,19 +39,16 @@ func newNum(cfg *Config, count, nulln int) *Number {
 	return res
 }
 
-func (nr *Number) Accepts(v any) bool {
-	return JsonTypeOf(v) == JsonNumber
-}
+func (nr *Number) Accepts(jt JsonType) bool { return jt.t == jsonNumber }
 
-func (nr *Number) Example(v any) Deducer {
-	jvt := JsonTypeOf(v)
-	switch jvt {
-	case 0:
+func (nr *Number) Example(v any, jt JsonType) Deducer {
+	switch jt.t {
+	case jsonNull:
 		nr.Count++
 		nr.Null++
-	case JsonNumber:
+	case jsonNumber:
 		nr.Count++
-		x, isFloat := asNumber(v)
+		x, isFloat := asNumber(v, jt.v)
 		_, frac := math.Modf(x)
 		nr.Min = min(nr.Min, x)
 		nr.Max = max(nr.Max, x)
@@ -64,7 +61,7 @@ func (nr *Number) Example(v any) Deducer {
 }
 
 func (nr *Number) Hash(dh DedupHash) uint64 {
-	hash := nr.dedBase.startHash(JsonNumber)
+	hash := nr.dedBase.startHash(jsonNumber)
 	if nr.cfg.DedupNumber&DedpuNumberIntFloat != 0 {
 		if nr.IsFloat {
 			hash.WriteByte(1)
@@ -151,32 +148,32 @@ func (nr *Number) JSONSchema() any {
 
 func (nr *Number) super() *dedBase { return &nr.dedBase }
 
-func asNumber(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case float32:
-		return float64(n), true
-	case int:
-		return float64(n), false
-	case uint:
-		return float64(n), false
-	case int64:
-		return float64(n), false
-	case uint64:
-		return float64(n), false
-	case int32:
-		return float64(n), false
-	case uint32:
-		return float64(n), false
-	case int16:
-		return float64(n), false
-	case uint16:
-		return float64(n), false
-	case int8:
-		return float64(n), false
-	case uint8:
-		return float64(n), false
+func asNumber(n any, v jsonVariant) (float64, bool) {
+	switch v {
+	case jsonNumFloat64:
+		return n.(float64), true
+	case jsonNumFloat32:
+		return float64(n.(float32)), true
+	case jsonNumInt:
+		return float64(n.(int)), false
+	case jsonNumUint:
+		return float64(n.(uint)), false
+	case jsonNumInt64:
+		return float64(n.(int64)), false
+	case jsonNumUint64:
+		return float64(n.(uint64)), false
+	case jsonNumInt32:
+		return float64(n.(int32)), false
+	case jsonNumUint32:
+		return float64(n.(uint32)), false
+	case jsonNumInt16:
+		return float64(n.(int16)), false
+	case jsonNumUint16:
+		return float64(n.(uint16)), false
+	case jsonNumInt8:
+		return float64(n.(int8)), false
+	case jsonNumUint8:
+		return float64(n.(uint8)), false
 	}
 	return math.NaN(), true
 }

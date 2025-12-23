@@ -23,11 +23,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
 
 	"git.fractalqb.de/fractalqb/eloc"
+	"git.fractalqb.de/fractalqb/eloc/must"
 )
 
 const StateVersion = 0
@@ -45,87 +47,95 @@ const (
 )
 
 type StateIO struct {
-	buf              []byte
-	strs             map[string]int64
-	sids             map[int64]string
+	buf  []byte
+	strs map[string]int64
+	sids map[int64]string
+	wr   io.Writer
+	rd   reader
+	cfg  *Config
+
 	StrCount, StrDup int
 }
 
-func (sio *StateIO) Write(w io.Writer, ded Deducer) error {
-	if _, err := fmt.Fprintf(w, "JSUM%d\n", StateVersion); err != nil {
-		return eloc.At(err)
-	}
+func (sio *StateIO) WriteState(w io.Writer, ded Deducer) (err error) {
+	must.RecoverAs(&err, "write jsum state")
+	must.RetCtx(fmt.Fprintf(w, "JSUM%d\n", StateVersion)).Msg("header")
 	if sio.strs == nil {
 		sio.strs = make(map[string]int64)
 	} else {
 		clear(sio.strs)
 	}
 	sio.StrCount, sio.StrDup = 0, 0
-	return sio.wrDed(w, ded)
+	sio.wr = w
+	defer func() { sio.wr = nil }()
+	sio.wrDed(ded)
+	return nil
 }
 
-func (sio *StateIO) Read(r io.Reader, cfg *Config) (Deducer, error) {
-	br := bufio.NewReader(r)
-	if err := sio.rdHeader(br); err != nil {
-		return nil, err
-	}
+func (sio *StateIO) ReadState(r io.Reader, cfg *Config, size int64) (_ Deducer, err error) {
+	must.RecoverAs(&err, "read jsum state")
+	sio.rd = reader{bufio.NewReader(r), size}
+	sio.cfg = cfg
+	defer func() {
+		sio.rd.r = nil
+		sio.cfg = nil
+	}()
+	sio.rdHeader()
 	if sio.sids == nil {
 		sio.sids = make(map[int64]string)
 	} else {
 		clear(sio.sids)
 	}
 	sio.StrCount, sio.StrDup = 0, 0
-	return sio.rdDed(br, cfg)
+	return sio.rdDed(), nil
 }
 
-func (sio *StateIO) wrDed(w io.Writer, ded Deducer) error {
+func (sio *StateIO) wrDed(ded Deducer) {
 	switch ded := ded.(type) {
 	case *String:
-		return sio.wrDedStr(w, ded)
+		sio.wrDedStr(ded)
 	case *Number:
-		return sio.wrDedNum(w, ded)
+		sio.wrDedNum(ded)
 	case *Boolean:
-		return sio.wrDedBool(w, ded)
+		sio.wrDedBool(ded)
 	case *Object:
-		return sio.wrDedObj(w, ded)
+		sio.wrDedObj(ded)
 	case *Array:
-		return sio.wrDedArray(w, ded)
+		sio.wrDedArray(ded)
 	case *Union:
-		return sio.wrDedUnion(w, ded)
+		sio.wrDedUnion(ded)
 	case *Any:
-		return sio.wrDedAny(w, ded)
+		sio.wrDedAny(ded)
 	case *Unknown:
-		return sio.wrDedUnk(w, ded)
-	case *Invalid:
-		return eloc.Errorf("invalid deducer: %w", ded.error)
+		sio.wrDedUnk(ded)
+	case Invalid:
+		eloc.Errorf("invalid deducer: %w", ded.error)
+	default:
+		panic(eloc.Errorf("unsupported deducer: %T", ded))
 	}
-	return eloc.Errorf("unsupported deducer: %T", ded)
 }
 
-func (sio *StateIO) rdDed(r *bufio.Reader, cfg *Config) (Deducer, error) {
-	tid, err := r.ReadByte()
-	if err != nil {
-		return nil, eloc.At(err)
-	}
+func (sio *StateIO) rdDed() Deducer {
+	tid := must.RetCtx(sio.rd.ReadByte()).Msg("deducer type id")
 	switch tid {
 	case tidString:
-		return sio.rdDedStr(r, cfg)
+		return sio.rdDedStr()
 	case tidNumber:
-		return sio.rdDedNum(r, cfg)
+		return sio.rdDedNum()
 	case tidBool:
-		return sio.rdDedBool(r, cfg)
+		return sio.rdDedBool()
 	case tidObject:
-		return sio.rdDedObj(r, cfg)
+		return sio.rdDedObj()
 	case tidArray:
-		return sio.rdDedArray(r, cfg)
+		return sio.rdDedArray()
 	case tidUnion:
-		return sio.rdDedUnion(r, cfg)
+		return sio.rdDedUnion()
 	case tidAny:
-		return sio.rdDedAny(r, cfg)
+		return sio.rdDedAny()
 	case tidUnknown:
-		return sio.rdDedUnk(r, cfg)
+		return sio.rdDedUnk()
 	}
-	return nil, eloc.Errorf("illegal deducer type id: %d", tid)
+	return newInvalid(eloc.Errorf("illegal deducer type id: %d", tid))
 }
 
 func (sio *StateIO) wrBase(tid byte, ded *dedBase) {
@@ -134,76 +144,48 @@ func (sio *StateIO) wrBase(tid byte, ded *dedBase) {
 	sio.buf = binary.AppendUvarint(sio.buf, uint64(ded.Null))
 }
 
-func (sio *StateIO) rdBase(r *bufio.Reader, ded *dedBase) error {
-	u, err := binary.ReadUvarint(r)
-	if err != nil {
-		return eloc.Errorf("base null: %w", err)
-	}
+func (sio *StateIO) rdBase(ded *dedBase) {
+	u := must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("base deducer count")
 	ded.Count = int(u)
-	if u, err = binary.ReadUvarint(r); err != nil {
-		return eloc.Errorf("base null: %w", err)
-	}
+	u = must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("base deducer null")
 	ded.Null = int(u)
-	return nil
 }
 
-func (sio *StateIO) wrDedStr(w io.Writer, ded *String) error {
+func (sio *StateIO) wrDedStr(ded *String) {
 	sio.wrBase(tidString, &ded.dedBase)
 	sio.buf = binary.AppendUvarint(sio.buf, uint64(len(ded.Stats)))
-	if _, err := w.Write(sio.buf); err != nil {
-		return eloc.At(err)
-	}
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("string stats len")
 	for s, n := range ded.Stats {
-		if err := sio.wrString(w, s); err != nil {
-			return err
-		}
+		sio.wrString(s)
 		sio.buf = binary.AppendUvarint(sio.buf[:0], uint64(n))
-		if _, err := w.Write(sio.buf); err != nil {
-			return eloc.At(err)
-		}
+		must.RetCtx(sio.wr.Write(sio.buf)).Msg("string stats for %s", s)
 	}
 	sio.buf = binary.AppendVarint(sio.buf[:0], int64(ded.Format))
-	_, err := w.Write(sio.buf)
-	return eloc.At(err)
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("string format")
 }
 
-func (sio *StateIO) rdDedStr(r *bufio.Reader, cfg *Config) (*String, error) {
-	ded := &String{dedBase: dedBase{cfg: cfg}}
-	if err := sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	nstats, err := binary.ReadUvarint(r)
-	if err != nil {
-		return nil, eloc.Errorf("string stats len: %w", err)
-	}
+func (sio *StateIO) rdDedStr() *String {
+	ded := &String{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	nstats := must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("string stats len")
+	sio.rd.checkU(statMinStrLen*nstats, "string stats len") // TODO factor N *varNo?
 	ded.Stats = make(map[string]int, nstats)
 	for i := range nstats {
-		s, err := sio.rdString(r)
-		if err != nil {
-			return nil, fmt.Errorf("string stat %d string: %w", i, err)
-		}
-		n, err := binary.ReadUvarint(r)
-		if err != nil {
-			return nil, eloc.Errorf("string stat %d count: %w", i, err)
-		}
+		s := sio.rdString()
+		n := must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("string stat %d", i)
 		ded.Stats[s] = int(n)
 	}
-	form, err := binary.ReadVarint(r)
-	if err != nil {
-		return nil, eloc.Errorf("string format: %w", err)
-	}
+	form := must.RetCtx(binary.ReadVarint(&sio.rd)).Msg("string format")
 	ded.Format = Format(form)
-	return ded, nil
+	return ded
 }
 
-func (sio *StateIO) wrDedNum(w io.Writer, ded *Number) (err error) {
+func (sio *StateIO) wrDedNum(ded *Number) {
 	sio.wrBase(tidNumber, &ded.dedBase)
-	if sio.buf, err = binary.Append(sio.buf, ndn, ded.Min); err != nil {
-		return eloc.At(err)
-	}
-	if sio.buf, err = binary.Append(sio.buf, ndn, ded.Max); err != nil {
-		return eloc.At(err)
-	}
+	sio.buf = must.RetCtx(binary.Append(sio.buf, ndn, ded.Min)).
+		Msg("number deducer min")
+	sio.buf = must.RetCtx(binary.Append(sio.buf, ndn, ded.Max)).
+		Msg("number deducer max")
 	var flags byte
 	if ded.IsFloat {
 		flags |= 1
@@ -212,264 +194,237 @@ func (sio *StateIO) wrDedNum(w io.Writer, ded *Number) (err error) {
 		flags |= 2
 	}
 	sio.buf = append(sio.buf, flags)
-	_, err = w.Write(sio.buf)
-	return eloc.At(err)
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("number deducer")
 }
 
-func (sio *StateIO) rdDedNum(r *bufio.Reader, cfg *Config) (*Number, error) {
-	ded := &Number{dedBase: dedBase{cfg: cfg}}
-	if err := sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	if err := binary.Read(r, ndn, &ded.Min); err != nil {
-		return nil, eloc.At(err)
-	}
-	if err := binary.Read(r, ndn, &ded.Max); err != nil {
-		return nil, eloc.At(err)
-	}
-	flags, err := r.ReadByte()
-	if err != nil {
-		return nil, eloc.At(err)
-	}
+func (sio *StateIO) rdDedNum() *Number {
+	ded := &Number{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	must.DoCtx(binary.Read(&sio.rd, ndn, &ded.Min), "number deducer min")
+	must.DoCtx(binary.Read(&sio.rd, ndn, &ded.Max), "number deducer max")
+	flags := must.RetCtx(sio.rd.ReadByte()).Msg("number deducer flags")
 	ded.IsFloat = flags&1 != 0
 	ded.HasFrac = flags&2 != 0
-	return ded, nil
+	return ded
 }
 
-func (sio *StateIO) wrDedBool(w io.Writer, ded *Boolean) (err error) {
+func (sio *StateIO) wrDedBool(ded *Boolean) {
 	sio.wrBase(tidBool, &ded.dedBase)
 	sio.buf = binary.AppendUvarint(sio.buf, uint64(ded.TrueNo))
 	sio.buf = binary.AppendUvarint(sio.buf, uint64(ded.FalseNo))
-	_, err = w.Write(sio.buf)
-	return eloc.At(err)
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("bool deducer")
 }
 
-func (sio *StateIO) rdDedBool(r *bufio.Reader, cfg *Config) (ded *Boolean, err error) {
-	ded = &Boolean{dedBase: dedBase{cfg: cfg}}
-	if err = sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	var tmp uint64
-	if tmp, err = binary.ReadUvarint(r); err != nil {
-		return nil, eloc.At(err)
-	}
+func (sio *StateIO) rdDedBool() *Boolean {
+	ded := &Boolean{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	tmp := must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("bool true count")
 	ded.TrueNo = int(tmp)
-	if tmp, err = binary.ReadUvarint(r); err != nil {
-		return nil, eloc.At(err)
-	}
+	tmp = must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("bool false count")
 	ded.FalseNo = int(tmp)
-	return ded, nil
+	return ded
 }
 
-func (sio *StateIO) wrDedObj(w io.Writer, ded *Object) (err error) {
+func (sio *StateIO) wrDedObj(ded *Object) {
 	sio.wrBase(tidObject, &ded.dedBase)
 	sio.buf = binary.AppendUvarint(sio.buf, uint64(len(ded.Members)))
-	if _, err = w.Write(sio.buf); err != nil {
-		return eloc.At(err)
-	}
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("object member count")
 	for n, m := range ded.Members {
-		if err = sio.wrString(w, n); err != nil {
-			return err
-		}
-		sio.buf = binary.AppendUvarint(sio.buf[:0], uint64(m.Occurence))
-		if _, err = w.Write(sio.buf); err != nil {
-			return eloc.At(err)
-		}
-		if err = sio.wrDed(w, m.Ded); err != nil {
-			return eloc.At(err)
-		}
+		sio.wrMbr(n, m)
 	}
-	return nil
 }
 
-func (sio *StateIO) rdDedObj(r *bufio.Reader, cfg *Config) (_ *Object, err error) {
-	ded := &Object{dedBase: dedBase{cfg: cfg}}
-	if err = sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	var mno uint64
-	if mno, err = binary.ReadUvarint(r); err != nil {
-		return nil, eloc.At(err)
-	}
+func (sio *StateIO) wrMbr(n string, m Member) {
+	sio.wrString(n)
+	sio.buf = binary.AppendUvarint(sio.buf[:0], uint64(m.Occurence))
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("object member accurence")
+	sio.wrDed(m.Ded)
+}
+
+func (sio *StateIO) rdDedObj() *Object {
+	ded := &Object{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	mno := must.RetCtx(binary.ReadUvarint(&sio.rd)).
+		Msg("object member count")
+	sio.rd.checkU(statMinMbrSz*mno, "object member count") // TODO factor N *varNo?
 	ded.Members = make(map[string]Member, mno)
 	for range mno {
-		n, err := sio.rdString(r)
-		if err != nil {
-			return nil, err
-		}
-		occ, err := binary.ReadUvarint(r)
-		if err != nil {
-			return nil, eloc.At(err)
-		}
-		mded, err := sio.rdDed(r, cfg)
-		if err != nil {
-			return nil, err
-		}
+		n := sio.rdString()
+		occ := must.RetCtx(binary.ReadUvarint(&sio.rd)).
+			Msg("object member occurence")
+		mded := sio.rdDed()
 		ded.Members[n] = Member{Occurence: int(occ), Ded: mded}
 	}
-	return ded, nil
+	return ded
 }
 
-func (sio *StateIO) wrDedArray(w io.Writer, ded *Array) (err error) {
+func (sio *StateIO) wrDedArray(ded *Array) {
 	sio.wrBase(tidArray, &ded.dedBase)
 	sio.buf = binary.AppendVarint(sio.buf, int64(ded.MinLen))
 	sio.buf = binary.AppendVarint(sio.buf, int64(ded.MaxLen))
-	if _, err = w.Write(sio.buf); err != nil {
-		return eloc.At(err)
-	}
-	return sio.wrDed(w, ded.Elem)
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("array min and max len")
+	sio.wrDed(ded.Elem)
 }
 
-func (sio *StateIO) rdDedArray(r *bufio.Reader, cfg *Config) (_ *Array, err error) {
-	ded := &Array{dedBase: dedBase{cfg: cfg}}
-	if err := sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	var tmp int64
-	if tmp, err = binary.ReadVarint(r); err != nil {
-		return nil, eloc.At(err)
-	}
+func (sio *StateIO) rdDedArray() *Array {
+	ded := &Array{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	tmp := must.RetCtx(binary.ReadVarint(&sio.rd)).Msg("read array min len")
 	ded.MinLen = int(tmp)
-	if tmp, err = binary.ReadVarint(r); err != nil {
-		return nil, eloc.At(err)
-	}
+	tmp = must.RetCtx(binary.ReadVarint(&sio.rd)).Msg("read array max len")
 	ded.MaxLen = int(tmp)
-	if eded, err := sio.rdDed(r, cfg); err != nil {
-		return nil, err
-	} else {
-		ded.Elem = eded
-	}
-	return ded, nil
+	ded.Elem = sio.rdDed()
+	return ded
 }
 
-func (sio *StateIO) wrDedUnion(w io.Writer, ded *Union) (err error) {
+func (sio *StateIO) wrDedUnion(ded *Union) {
 	sio.wrBase(tidUnion, &ded.dedBase)
 	sio.buf = binary.AppendUvarint(sio.buf, uint64(len(ded.Variants)))
-	if _, err = w.Write(sio.buf); err != nil {
-		return eloc.At(err)
-	}
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("union variants len")
 	for _, v := range ded.Variants {
-		if err := sio.wrDed(w, v); err != nil {
-			return err
-		}
+		sio.wrDed(v)
 	}
-	return nil
 }
 
-func (sio *StateIO) rdDedUnion(r *bufio.Reader, cfg *Config) (_ *Union, err error) {
-	ded := &Union{dedBase: dedBase{cfg: cfg}}
-	if err := sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	var varNo uint64
-	if varNo, err = binary.ReadUvarint(r); err != nil {
-		return nil, eloc.At(err)
-	}
+func (sio *StateIO) rdDedUnion() *Union {
+	ded := &Union{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	varNo := must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("union variant count")
+	sio.rd.checkU(statMinVarSz*varNo, "union variant count") // TODO factor N *varNo?
 	ded.Variants = make([]Deducer, varNo)
 	for i := range varNo {
-		vded, err := sio.rdDed(r, cfg)
-		if err != nil {
-			return nil, err
-		}
-		ded.Variants[i] = vded
+		ded.Variants[i] = sio.rdDed()
 	}
-	return ded, nil
+	return ded
 }
 
-func (sio *StateIO) wrDedAny(w io.Writer, ded *Any) (err error) {
+func (sio *StateIO) wrDedAny(ded *Any) {
 	sio.wrBase(tidAny, &ded.dedBase)
-	_, err = w.Write(sio.buf)
-	return eloc.At(err)
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("any")
 }
 
-func (sio *StateIO) rdDedAny(r *bufio.Reader, cfg *Config) (*Any, error) {
-	ded := &Any{dedBase: dedBase{cfg: cfg}}
-	if err := sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	return ded, nil
+func (sio *StateIO) rdDedAny() *Any {
+	ded := &Any{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	return ded
 }
 
-func (sio *StateIO) wrDedUnk(w io.Writer, ded *Unknown) (err error) {
+func (sio *StateIO) wrDedUnk(ded *Unknown) {
 	sio.wrBase(tidUnknown, &ded.dedBase)
-	_, err = w.Write(sio.buf)
-	return eloc.At(err)
+	must.RetCtx(sio.wr.Write(sio.buf)).Msg("unknown")
 }
 
-func (sio *StateIO) rdDedUnk(r *bufio.Reader, cfg *Config) (*Unknown, error) {
-	ded := &Unknown{dedBase: dedBase{cfg: cfg}}
-	if err := sio.rdBase(r, &ded.dedBase); err != nil {
-		return nil, err
-	}
-	return ded, nil
+func (sio *StateIO) rdDedUnk() *Unknown {
+	ded := &Unknown{dedBase: dedBase{cfg: sio.cfg}}
+	sio.rdBase(&ded.dedBase)
+	return ded
 }
 
-func (sio *StateIO) rdHeader(r *bufio.Reader) error {
-	line, err := r.ReadString('\n')
-	if err != nil {
-		return eloc.At(err)
-	}
+func (sio *StateIO) rdHeader() {
+	line := must.RetCtx(sio.rd.ReadString('\n')).Msg("header line")
 	line = line[:len(line)-1]
 	if !strings.HasPrefix(line, "JSUM") {
-		return eloc.New("not a JSUM state file")
+		panic(eloc.New("not a JSUM state file"))
 	}
-	if v, err := strconv.Atoi(line[4:]); err != nil {
-		return eloc.Errorf("JSUM header version: %w", err)
-	} else if v != StateVersion {
-		return eloc.Errorf("unsupported state version %d", v)
+	v := must.RetCtx(strconv.Atoi(line[4:])).Msg("header version")
+	if v != StateVersion {
+		panic(eloc.Errorf("unsupported state version %d", v))
 	}
-	return nil
 }
 
-func (sio *StateIO) wrString(w io.Writer, s string) error {
+func (sio *StateIO) wrString(s string) {
 	sio.StrCount++
 	if id := sio.strs[s]; id > 0 {
 		sio.StrDup++
 		sio.buf = binary.AppendVarint(sio.buf[:0], id)
-		_, err := w.Write(sio.buf)
-		return eloc.At(err)
+		must.RetCtx(sio.wr.Write(sio.buf)).Msg("string id")
+	} else {
+		id := int64(len(sio.strs) + 1)
+		sio.strs[s] = id
+		sio.buf = binary.AppendVarint(sio.buf[:0], -id)
+		sio.buf = binary.AppendUvarint(sio.buf, uint64(len(s)))
+		sio.buf = append(sio.buf, s...)
+		must.RetCtx(sio.wr.Write(sio.buf)).Msg("string decl")
 	}
-	id := int64(len(sio.strs) + 1)
-	sio.strs[s] = id
-	sio.buf = binary.AppendVarint(sio.buf[:0], -id)
-	sio.buf = binary.AppendUvarint(sio.buf, uint64(len(s)))
-	sio.buf = append(sio.buf, s...)
-	_, err := w.Write(sio.buf)
-	return eloc.At(err)
 }
 
-func (sio *StateIO) rdString(r *bufio.Reader) (string, error) {
+func (sio *StateIO) rdString() string {
 	sio.StrCount++
-	id, err := binary.ReadVarint(r)
-	if err != nil {
-		return "", eloc.At(err)
-	}
+	id := must.RetCtx(binary.ReadVarint(&sio.rd)).Msg("read string ID")
 	switch {
 	case id > 0:
 		s, ok := sio.sids[id]
 		if !ok {
-			return "", eloc.Errorf("unknown string id %d", id)
+			panic(eloc.Errorf("unknown string id %d", id))
 		}
 		sio.StrDup++
-		return s, nil
+		return s
 	case id < 0:
-		l, err := binary.ReadUvarint(r)
-		if err != nil {
-			return "", eloc.At(err)
-		}
-		// FIXME restrict size
+		l := must.RetCtx(binary.ReadUvarint(&sio.rd)).Msg("read string len")
+		sio.rd.checkU(l, "string len")
 		if bl := len(sio.buf); bl < int(l) {
 			sio.buf = slices.Grow(sio.buf, int(l)-bl)
 		}
 		sio.buf = sio.buf[:int(l)]
-		if _, err := io.ReadFull(r, sio.buf); err != nil {
-			return "", eloc.At(err)
-		}
+		must.RetCtx(io.ReadFull(&sio.rd, sio.buf)).Msg("read string text")
 		s := string(sio.buf)
 		sio.sids[-id] = s
-		return s, nil
+		return s
 	}
-	return "", eloc.New("invalid string id")
+	panic(eloc.New("invalid string id"))
 }
 
 var ndn = binary.BigEndian
+
+type reader struct {
+	r    *bufio.Reader
+	rest int64
+}
+
+func (rc *reader) Read(p []byte) (n int, err error) {
+	n, err = rc.r.Read(p)
+	rc.rest -= int64(n)
+	return
+}
+
+func (rc *reader) ReadByte() (b byte, err error) {
+	b, err = rc.r.ReadByte()
+	if err == nil {
+		rc.rest--
+	}
+	return
+}
+
+func (rc *reader) ReadString(delim byte) (s string, err error) {
+	s, err = rc.r.ReadString(delim)
+	rc.rest -= int64(len(s))
+	return
+}
+
+const (
+	statMinStrLen = 1
+	statMinMbrSz  = 5
+	statMinVarSz  = 3
+)
+
+func (rc *reader) checkU(s uint64, f string, a ...any) {
+	if s > math.MaxInt64 {
+		panic(fmt.Errorf(
+			"size %d exceeds int64 range \\"+f,
+			append([]any{s}, a...),
+		))
+	}
+	rc.checkI(int64(s), f, a...)
+}
+
+func (rc *reader) checkI(s int64, f string, a ...any) {
+	if rc.rest < 0 {
+		return
+	}
+	if s > rc.rest {
+		panic(fmt.Errorf(
+			"size %d exceeds rest %d \\"+f,
+			append([]any{s, rc.rest}, a...),
+		))
+	}
+}

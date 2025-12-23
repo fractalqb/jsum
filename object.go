@@ -20,7 +20,7 @@ package jsum
 
 import (
 	"encoding/binary"
-	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -42,34 +42,31 @@ func newObjJson(cfg *Config, count, nulln int) *Object {
 	return res
 }
 
-func (o *Object) Accepts(v any) bool {
-	return JsonTypeOf(v) == JsonObject
-}
+func (o *Object) Accepts(jt JsonType) bool { return jt.t == jsonObject }
 
-func (o *Object) Example(v any) Deducer {
-	vjt := JsonTypeOf(v)
-	switch vjt {
-	case 0:
+func (o *Object) Example(v any, jt JsonType) Deducer {
+	if jt.t == jsonNull {
 		o.Count++
 		o.Null++
 		return o
-	case JsonObject:
-		o.Count++
-		switch v := v.(type) {
-		case map[string]any:
-			o.mergeMap(v)
-		default:
-			panic(fmt.Errorf("object example of type %T", v))
-		}
-		return o
 	}
-	return newAny(o.cfg, o.Count+1, o.Null) // Why not union?
+	switch jt.v {
+	case jsonObjStrAny:
+		o.Count++
+		o.mergeMap(v.(map[string]any))
+		return o
+		// TODO case jsonObjRMap:
+	}
+	return newAny(o.cfg, o.Count+1, o.Null) // TODO Why not union?
 }
 
 func (o *Object) mergeMap(m map[string]any) {
 	for k, v := range m {
 		if m, ok := o.Members[k]; ok {
-			o.Members[k] = Member{Occurence: m.Occurence + 1, Ded: m.Ded.Example(v)}
+			o.Members[k] = Member{
+				Occurence: m.Occurence + 1,
+				Ded:       m.Ded.Example(v, JsonTypeOf(v)),
+			}
 		} else {
 			o.Members[k] = Member{Occurence: 1, Ded: Deduce(o.cfg, v)}
 		}
@@ -87,7 +84,7 @@ func (o *Object) Hash(dh DedupHash) uint64 {
 		mems = append(mems, memhash{n, mh})
 	}
 	sort.Slice(mems, func(i, j int) bool { return mems[i].n < mems[j].n })
-	hash := o.dedBase.startHash(JsonObject)
+	hash := o.dedBase.startHash(jsonObject)
 	for _, m := range mems {
 		binary.Write(hash, hashEndian, m.h)
 	}
@@ -124,6 +121,7 @@ func (o *Object) JSONSchema() any {
 			res.Required = append(res.Required, n)
 		}
 	}
+	slices.Sort(res.Required)
 	if o.Null > 0 {
 		return []any{"null", res}
 	}

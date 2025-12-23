@@ -102,7 +102,7 @@ func AnyLabel(ded *Any) string { return "Any " + numsLabel(&ded.dedBase) }
 func UnknownLabel(ded *Unknown) string { return "??? " + numsLabel(&ded.dedBase) }
 
 func InvalidLabel(n Invalid) string {
-	return fmt.Sprintf("<INVALID: %s>\n", n.error.Error())
+	return fmt.Sprintf("<INVALID: %s>", n.error.Error())
 }
 
 func StringLabel(ded *String) string {

@@ -24,8 +24,8 @@ type jscmArray struct {
 	Items    any `json:"items,omitempty"`
 }
 
-type jscmOneOf struct {
-	OneOf []any `json:"oneOf"`
+type jscmAnyOf struct {
+	AnyOf []any `json:"anyOf"`
 }
 
 type jscmObj struct {

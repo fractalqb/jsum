@@ -20,6 +20,7 @@ package jsum
 
 import (
 	"encoding/binary"
+	"slices"
 	"sort"
 )
 
@@ -39,24 +40,24 @@ func newUnion(a, b Deducer) *Union {
 	}
 }
 
-func (u *Union) Accepts(v any) bool {
+func (u *Union) Accepts(jt JsonType) bool {
 	for _, d := range u.Variants {
-		if d.Accepts(v) {
+		if d.Accepts(jt) {
 			return true
 		}
 	}
 	return false
 }
 
-func (u *Union) Example(v any) Deducer {
+func (u *Union) Example(v any, jt JsonType) Deducer {
 	u.Count++
 	if v == nil {
 		u.Null++
 		return u
 	}
 	for i, d := range u.Variants {
-		if d.Accepts(v) {
-			u.Variants[i] = d.Example(v)
+		if d.Accepts(jt) {
+			u.Variants[i] = d.Example(v, jt)
 			return u
 		}
 	}
@@ -97,12 +98,12 @@ func (u *Union) Equal(d Deducer) bool {
 }
 
 func (u *Union) JSONSchema() any {
-	scm := jscmOneOf{OneOf: make([]any, len(u.Variants))}
+	scm := jscmAnyOf{AnyOf: make([]any, len(u.Variants))}
 	for i, v := range u.Variants {
-		scm.OneOf[i] = v.JSONSchema()
+		scm.AnyOf[i] = v.JSONSchema()
 	}
-	if u.Null > 0 {
-		scm.OneOf = append(scm.OneOf, "null")
+	if u.Null > 0 && !slices.Contains(scm.AnyOf, "null") {
+		scm.AnyOf = append(scm.AnyOf, "null")
 	}
 	return scm
 }

@@ -43,14 +43,18 @@ func newString(cfg *Config, count, nulln int) *String {
 	}
 }
 
-func (a *String) Accepts(v any) bool { return JsonTypeOf(v) == JsonString }
+func (a *String) Accepts(jt JsonType) bool { return jt.t == jsonString }
 
-func (a *String) Example(v any) Deducer {
-	vjt := JsonTypeOf(v)
-	if vjt == JsonString {
+func (a *String) Example(v any, jt JsonType) Deducer {
+	switch jt.t {
+	case jsonNull:
 		a.Count++
-		switch v := v.(type) {
-		case string:
+		a.Null++
+	case jsonString:
+		a.Count++
+		switch jt.v {
+		case jsonStrString:
+			v := v.(string)
 			if fmt := stringFormat(v); fmt == 0 {
 				a.Format = 0
 			} else if len(a.Stats) == 0 {
@@ -59,7 +63,8 @@ func (a *String) Example(v any) Deducer {
 				a.Format = 0
 			}
 			a.Stats[v]++
-		case time.Time:
+		case jsonStrTime:
+			v := v.(time.Time)
 			if len(a.Stats) == 0 {
 				a.Format = DateTimeFormat
 			}
@@ -68,7 +73,7 @@ func (a *String) Example(v any) Deducer {
 		}
 		return a
 	}
-	return newUnion(a, Deduce(a.cfg, v))
+	return newUnion(a, Deduce(a.cfg, v)) // TODO reuse jt
 }
 
 func stringFormat(s string) Format {
@@ -79,7 +84,7 @@ func stringFormat(s string) Format {
 }
 
 func (s *String) Hash(dh DedupHash) uint64 {
-	hash := s.dedBase.startHash(JsonString)
+	hash := s.dedBase.startHash(jsonString)
 	if s.cfg.DedupString&DedupStringEmpty != 0 {
 		if s.Stats[""] > 0 {
 			hash.WriteByte(1)
