@@ -28,9 +28,11 @@ func newAny(cfg *Config, count, nulln int) *Any {
 	}}
 }
 
-func (*Any) Accepts(jt JsonType) bool { return true }
+func (*Any) JsonType() JsonType { return JsonAny }
 
-func (a *Any) Example(v any, _ JsonType) Deducer {
+func (*Any) Accepts(v any, jt JsumType) float64 { return 1 }
+
+func (a *Any) Example(v any, _ JsumType, _ float64) Deducer {
 	a.Count++
 	if v == nil {
 		a.Null++
@@ -39,7 +41,7 @@ func (a *Any) Example(v any, _ JsonType) Deducer {
 }
 
 func (a *Any) Hash(dh DedupHash) uint64 {
-	hash := a.dedBase.startHash(jsonAny)
+	hash := a.dedBase.startHash(JsonAny)
 	res := hash.Sum64()
 	dh[res] = addNotEqual(dh[res], a)
 	return res

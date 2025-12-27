@@ -38,9 +38,19 @@ import (
 
 var (
 	cfg = jsum.Config{
-		DedupBool:   jsum.DedupBoolFalse | jsum.DedupBoolTrue,
-		DedupNumber: jsum.DedpuNumberIntFloat | jsum.DedupNumberNeg,
-		DedupString: jsum.DedupStringEmpty,
+		Union: jsum.UnionConfig{
+			Combine: []jsum.TypeSet{jsum.AllTypes},
+			// Combine: []jsum.TypeSet{
+			// 	jsum.NewTypeSet(jsum.JsonString, jsum.JsonNumber, jsum.JsonBoolean),
+			// 	jsum.NewTypeSet(jsum.JsonObject),
+			// 	jsum.NewTypeSet(jsum.JsonArray),
+			// },
+		},
+		Dedup: jsum.DedupConfig{
+			Bool:   jsum.DedupBoolFalse | jsum.DedupBoolTrue,
+			Number: jsum.DedpuNumberIntFloat | jsum.DedupNumberNeg,
+			String: jsum.DedupStringEmpty,
+		},
 	}
 	fTreeStyle = "draw"
 	fStrMax    = 6
@@ -234,7 +244,7 @@ func read(dec decoder, d jsum.Deducer) (jsum.Deducer, int) {
 		if !jt.Valid() {
 			log.Fatalf("no deduced type for %T", jv)
 		}
-		d = d.Example(jv, jt)
+		d = d.Example(jv, jt, jsum.UnknownAccept)
 		if i, ok := d.(jsum.Invalid); ok {
 			log.Fatal(i)
 		}

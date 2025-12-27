@@ -28,15 +28,22 @@ func newBool(cfg *Config, count, nulln int) *Boolean {
 	return &Boolean{dedBase: dedBase{cfg: cfg, Count: count, Null: nulln}}
 }
 
-func (a *Boolean) Accepts(jt JsonType) bool { return jt.t == jsonBoolean }
+func (*Boolean) JsonType() JsonType { return JsonBoolean }
 
-func (a *Boolean) Example(v any, jt JsonType) Deducer {
+func (a *Boolean) Accepts(_ any, jt JsumType) float64 {
+	if jt.t == JsonBoolean {
+		return 1
+	}
+	return 0
+}
+
+func (a *Boolean) Example(v any, jt JsumType, _ float64) Deducer {
 	switch jt.t {
-	case jsonNull:
+	case JsonNull:
 		a.Count++
 		a.Null++
 		return a
-	case jsonBoolean:
+	case JsonBoolean:
 		a.Count++
 		if v.(bool) {
 			a.TrueNo++
@@ -45,19 +52,20 @@ func (a *Boolean) Example(v any, jt JsonType) Deducer {
 		}
 		return a
 	}
-	return newUnion(a, Deduce(a.cfg, v))
+	u := newUnion(a)
+	return u.Example(v, jt, UnknownAccept)
 }
 
 func (a *Boolean) Hash(dh DedupHash) uint64 {
-	hash := a.dedBase.startHash(jsonBoolean)
-	if a.cfg.DedupBool&DedupBoolFalse != 0 {
+	hash := a.dedBase.startHash(JsonBoolean)
+	if a.cfg.Dedup.Bool&DedupBoolFalse != 0 {
 		if a.FalseNo > 0 {
 			hash.WriteByte(1)
 		} else {
 			hash.WriteByte(0)
 		}
 	}
-	if a.cfg.DedupBool&DedupBoolTrue != 0 {
+	if a.cfg.Dedup.Bool&DedupBoolTrue != 0 {
 		if a.TrueNo > 0 {
 			hash.WriteByte(1)
 		} else {

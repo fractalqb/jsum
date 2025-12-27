@@ -42,10 +42,17 @@ func newObjJson(cfg *Config, count, nulln int) *Object {
 	return res
 }
 
-func (o *Object) Accepts(jt JsonType) bool { return jt.t == jsonObject }
+func (*Object) JsonType() JsonType { return JsonObject }
 
-func (o *Object) Example(v any, jt JsonType) Deducer {
-	if jt.t == jsonNull {
+func (o *Object) Accepts(_ any, jt JsumType) float64 {
+	if jt.t != JsonObject {
+		return 0
+	}
+	return 1
+}
+
+func (o *Object) Example(v any, jt JsumType, _ float64) Deducer {
+	if jt.t == JsonNull {
 		o.Count++
 		o.Null++
 		return o
@@ -65,7 +72,7 @@ func (o *Object) mergeMap(m map[string]any) {
 		if m, ok := o.Members[k]; ok {
 			o.Members[k] = Member{
 				Occurence: m.Occurence + 1,
-				Ded:       m.Ded.Example(v, JsonTypeOf(v)),
+				Ded:       m.Ded.Example(v, JsonTypeOf(v), UnknownAccept),
 			}
 		} else {
 			o.Members[k] = Member{Occurence: 1, Ded: Deduce(o.cfg, v)}
@@ -84,7 +91,7 @@ func (o *Object) Hash(dh DedupHash) uint64 {
 		mems = append(mems, memhash{n, mh})
 	}
 	sort.Slice(mems, func(i, j int) bool { return mems[i].n < mems[j].n })
-	hash := o.dedBase.startHash(jsonObject)
+	hash := o.dedBase.startHash(JsonObject)
 	for _, m := range mems {
 		binary.Write(hash, hashEndian, m.h)
 	}

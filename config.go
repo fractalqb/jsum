@@ -43,7 +43,23 @@ const (
 )
 
 type Config struct {
-	DedupBool   DedupBool
-	DedupNumber DedupNumber
-	DedupString DedupString
+	Union UnionConfig
+	Dedup DedupConfig
+}
+
+type UnionConfig struct {
+	// VariantRejectMax is the maximum acceptance that will be rejected to be
+	// merged into an existing variant. New values with a better acceptance will
+	// be merged into the best accepting variant.
+	VariantRejectMax float64
+
+	// Combine is a set of JsonType combinations that are allowed to coexist as
+	// variants in a union.
+	Combine []TypeSet
+}
+
+type DedupConfig struct {
+	Bool   DedupBool
+	Number DedupNumber
+	String DedupString
 }

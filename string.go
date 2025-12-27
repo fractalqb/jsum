@@ -43,14 +43,21 @@ func newString(cfg *Config, count, nulln int) *String {
 	}
 }
 
-func (a *String) Accepts(jt JsonType) bool { return jt.t == jsonString }
+func (*String) JsonType() JsonType { return JsonString }
 
-func (a *String) Example(v any, jt JsonType) Deducer {
+func (a *String) Accepts(_ any, jt JsumType) float64 {
+	if jt.t == JsonString {
+		return 1
+	}
+	return 0
+}
+
+func (a *String) Example(v any, jt JsumType, _ float64) Deducer {
 	switch jt.t {
-	case jsonNull:
+	case JsonNull:
 		a.Count++
 		a.Null++
-	case jsonString:
+	case JsonString:
 		a.Count++
 		switch jt.v {
 		case jsonStrString:
@@ -73,7 +80,8 @@ func (a *String) Example(v any, jt JsonType) Deducer {
 		}
 		return a
 	}
-	return newUnion(a, Deduce(a.cfg, v)) // TODO reuse jt
+	u := newUnion(a)
+	return u.Example(v, jt, UnknownAccept)
 }
 
 func stringFormat(s string) Format {
@@ -84,8 +92,8 @@ func stringFormat(s string) Format {
 }
 
 func (s *String) Hash(dh DedupHash) uint64 {
-	hash := s.dedBase.startHash(jsonString)
-	if s.cfg.DedupString&DedupStringEmpty != 0 {
+	hash := s.dedBase.startHash(JsonString)
+	if s.cfg.Dedup.String&DedupStringEmpty != 0 {
 		if s.Stats[""] > 0 {
 			hash.WriteByte(1)
 		} else {

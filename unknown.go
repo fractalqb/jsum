@@ -26,41 +26,43 @@ func NewUnknown(cfg *Config) *Unknown {
 	return &Unknown{dedBase: dedBase{cfg: cfg}}
 }
 
-func (a *Unknown) Accepts(JsonType) bool { return true }
+func (a *Unknown) JsonType() JsonType { return JsonUnknown }
 
-func (a *Unknown) Example(v any, jt JsonType) Deducer {
+func (a *Unknown) Accepts(any, JsumType) float64 { return 1 }
+
+func (a *Unknown) Example(v any, jt JsumType, _ float64) Deducer {
 	switch jt.t {
-	case jsonNull:
+	case JsonNull:
 		a.Count++
 		a.Null++
 		return a
-	case jsonString:
+	case JsonString:
 		str := newString(a.cfg, a.Count, a.Null)
-		return str.Example(v, jt)
-	case jsonNumber:
+		return str.Example(v, jt, UnknownAccept)
+	case JsonNumber:
 		ded := newNum(a.cfg, a.Count, a.Null)
-		return ded.Example(v, jt)
-	case jsonBoolean:
+		return ded.Example(v, jt, UnknownAccept)
+	case JsonBoolean:
 		b := newBool(a.cfg, a.Count, a.Null)
-		return b.Example(v, jt)
-	case jsonObject:
+		return b.Example(v, jt, UnknownAccept)
+	case JsonObject:
 		switch v := v.(type) {
 		case map[string]any:
 			ded := newObjJson(a.cfg, a.Count, a.Null)
-			return ded.Example(v, jt)
+			return ded.Example(v, jt, UnknownAccept)
 		}
-	case jsonArray:
+	case JsonArray:
 		switch v := v.(type) {
 		case []any:
 			ded := newArrJson(a.cfg, a.Count, a.Null)
-			return ded.Example(v, jt)
+			return ded.Example(v, jt, UnknownAccept)
 		}
 	}
 	return newInvalid(fmt.Errorf("cannot deduce type from: %T", v))
 }
 
 func (a *Unknown) Hash(dh DedupHash) uint64 {
-	hash := a.dedBase.startHash(jsonUnknown)
+	hash := a.dedBase.startHash(JsonUnknown)
 	res := hash.Sum64()
 	dh[res] = addNotEqual(dh[res], a)
 	return res

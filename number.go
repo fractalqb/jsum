@@ -39,14 +39,21 @@ func newNum(cfg *Config, count, nulln int) *Number {
 	return res
 }
 
-func (nr *Number) Accepts(jt JsonType) bool { return jt.t == jsonNumber }
+func (*Number) JsonType() JsonType { return JsonNumber }
 
-func (nr *Number) Example(v any, jt JsonType) Deducer {
+func (nr *Number) Accepts(_ any, jt JsumType) float64 {
+	if jt.t == JsonNumber {
+		return 1
+	}
+	return 0
+}
+
+func (nr *Number) Example(v any, jt JsumType, _ float64) Deducer {
 	switch jt.t {
-	case jsonNull:
+	case JsonNull:
 		nr.Count++
 		nr.Null++
-	case jsonNumber:
+	case JsonNumber:
 		nr.Count++
 		x, isFloat := asNumber(v, jt.v)
 		_, frac := math.Modf(x)
@@ -55,41 +62,42 @@ func (nr *Number) Example(v any, jt JsonType) Deducer {
 		nr.IsFloat = nr.IsFloat || isFloat
 		nr.HasFrac = nr.HasFrac || frac != 0
 	default:
-		return newUnion(nr, Deduce(nr.cfg, v))
+		u := newUnion(nr)
+		return u.Example(v, jt, UnknownAccept)
 	}
 	return nr
 }
 
 func (nr *Number) Hash(dh DedupHash) uint64 {
-	hash := nr.dedBase.startHash(jsonNumber)
-	if nr.cfg.DedupNumber&DedpuNumberIntFloat != 0 {
+	hash := nr.dedBase.startHash(JsonNumber)
+	if nr.cfg.Dedup.Number&DedpuNumberIntFloat != 0 {
 		if nr.IsFloat {
 			hash.WriteByte(1)
 		} else {
 			hash.WriteByte(0)
 		}
 	}
-	if nr.cfg.DedupNumber&DedupNumberFrac != 0 {
+	if nr.cfg.Dedup.Number&DedupNumberFrac != 0 {
 		if nr.HasFrac {
 			hash.WriteByte(1)
 		} else {
 			hash.WriteByte(0)
 		}
 	}
-	if nr.cfg.DedupNumber&DedupNumberMin != 0 {
+	if nr.cfg.Dedup.Number&DedupNumberMin != 0 {
 		binary.Write(hash, hashEndian, nr.Min)
 	}
-	if nr.cfg.DedupNumber&DedupNumberMax != 0 {
+	if nr.cfg.Dedup.Number&DedupNumberMax != 0 {
 		binary.Write(hash, hashEndian, nr.Max)
 	}
-	if nr.cfg.DedupNumber&DedupNumberNeg != 0 {
+	if nr.cfg.Dedup.Number&DedupNumberNeg != 0 {
 		if nr.Min < 0 {
 			hash.WriteByte(1)
 		} else {
 			hash.WriteByte(0)
 		}
 	}
-	if nr.cfg.DedupNumber&DedupNumberPos != 0 {
+	if nr.cfg.Dedup.Number&DedupNumberPos != 0 {
 		if nr.Max > 0 {
 			hash.WriteByte(1)
 		} else {
@@ -107,22 +115,22 @@ func (nr *Number) Equal(d Deducer) bool {
 		return false
 	}
 	res := nr.dedBase.Equal(&b.dedBase)
-	if res && nr.cfg.DedupNumber&DedpuNumberIntFloat != 0 {
+	if res && nr.cfg.Dedup.Number&DedpuNumberIntFloat != 0 {
 		res = nr.IsFloat == b.IsFloat
 	}
-	if res && nr.cfg.DedupNumber&DedupNumberFrac != 0 {
+	if res && nr.cfg.Dedup.Number&DedupNumberFrac != 0 {
 		res = nr.HasFrac == b.HasFrac
 	}
-	if res && nr.cfg.DedupNumber&DedupNumberMin != 0 {
+	if res && nr.cfg.Dedup.Number&DedupNumberMin != 0 {
 		res = nr.Min == b.Min
 	}
-	if res && nr.cfg.DedupNumber&DedupNumberMax != 0 {
+	if res && nr.cfg.Dedup.Number&DedupNumberMax != 0 {
 		res = nr.Max == b.Max
 	}
-	if res && nr.cfg.DedupNumber&DedupNumberNeg != 0 {
+	if res && nr.cfg.Dedup.Number&DedupNumberNeg != 0 {
 		res = (nr.Min < 0) == (b.Min < 0)
 	}
-	if res && nr.cfg.DedupNumber&DedupNumberPos != 0 {
+	if res && nr.cfg.Dedup.Number&DedupNumberPos != 0 {
 		res = (nr.Max > 0) == (b.Max > 0)
 	}
 	return res

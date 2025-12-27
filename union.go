@@ -29,41 +29,51 @@ type Union struct {
 	Variants []Deducer `json:"variants"`
 }
 
-func newUnion(a, b Deducer) *Union {
+func newUnion(d Deducer) *Union {
 	return &Union{
 		dedBase: dedBase{
-			cfg:   a.super().cfg,
-			Count: a.super().Count + b.super().Count,
-			Null:  a.super().Null + b.super().Null,
+			cfg:   d.super().cfg,
+			Count: d.super().Count,
+			Null:  d.super().Null,
 		},
-		Variants: []Deducer{a, b},
+		Variants: []Deducer{d},
 	}
 }
 
-func (u *Union) Accepts(jt JsonType) bool {
+func (*Union) JsonType() JsonType { return JsonUnion }
+
+func (u *Union) Accepts(a any, jt JsumType) (res float64) {
 	for _, d := range u.Variants {
-		if d.Accepts(jt) {
-			return true
-		}
+		res = max(res, d.Accepts(a, jt))
 	}
-	return false
+	return res
 }
 
-func (u *Union) Example(v any, jt JsonType) Deducer {
+func (u *Union) Example(v any, jt JsumType, _ float64) Deducer {
 	u.Count++
 	if v == nil {
 		u.Null++
 		return u
 	}
+	tset := NewTypeSet(jt.JsonType())
+	avar, amax := -1, 0.0
 	for i, d := range u.Variants {
-		if d.Accepts(jt) {
-			u.Variants[i] = d.Example(v, jt)
+		tset.Add(d.JsonType())
+		if da := d.Accepts(v, jt); da > amax {
+			avar, amax = i, da
+		}
+	}
+	if amax > u.cfg.Union.VariantRejectMax {
+		u.Variants[avar] = u.Variants[avar].Example(v, jt, amax)
+		return u
+	}
+	for _, comb := range u.cfg.Union.Combine {
+		if comb&tset == tset {
+			u.Variants = append(u.Variants, Deduce(u.cfg, v))
 			return u
 		}
 	}
-	// TODO When does Union switch to Any
-	u.Variants = append(u.Variants, Deduce(u.cfg, v))
-	return u
+	return newAny(u.cfg, u.Count, u.Null)
 }
 
 func (u *Union) Hash(dh DedupHash) uint64 {
@@ -72,7 +82,7 @@ func (u *Union) Hash(dh DedupHash) uint64 {
 		dhs = append(dhs, ed.Hash(dh))
 	}
 	sort.Slice(dhs, func(i, j int) bool { return dhs[i] < dhs[j] })
-	hash := u.dedBase.startHash(jsonUnion)
+	hash := u.dedBase.startHash(JsonUnion)
 	for _, h := range dhs {
 		binary.Write(hash, hashEndian, h)
 	}

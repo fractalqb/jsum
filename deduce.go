@@ -26,32 +26,52 @@ import (
 )
 
 type (
-	jsonType    uint16
+	JsonType    uint16
 	jsonVariant uint16
 )
-type JsonType struct {
-	t jsonType
+type JsumType struct {
+	t JsonType
 	v jsonVariant
 }
 
-func (t JsonType) Valid() bool  { return t.t > 0 }
-func (t JsonType) Scalar() bool { return t.t.scalar() }
+func (t JsumType) Valid() bool        { return t.t > 0 }
+func (t JsumType) JsonType() JsonType { return t.t }
+func (t JsumType) Scalar() bool       { return t.t.scalar() }
 
 const (
-	jsonNull jsonType = iota + 1
-	jsonObject
-	jsonArray
-	jsonString
-	jsonNumber
-	jsonBoolean
+	JsonNull JsonType = iota + 1
+	JsonObject
+	JsonArray
+	JsonString
+	JsonNumber
+	JsonBoolean
 
-	jsonUnknown
-	jsonUnion
-	jsonAny
+	JsonUnknown
+	JsonUnion
+	JsonAny
+
+	jsonInvalid
 )
 
-func (jt jsonType) scalar() bool {
-	return jt >= jsonString && jt <= jsonBoolean
+func (jt JsonType) scalar() bool {
+	return jt >= JsonString && jt <= JsonBoolean
+}
+
+type TypeSet uint32
+
+const AllTypes = ^TypeSet(1 << (jsonInvalid - 1))
+
+func NewTypeSet(ts ...JsonType) (set TypeSet) {
+	for _, t := range ts {
+		set.Add(t)
+	}
+	return set
+}
+
+func (ts *TypeSet) Add(t JsonType) {
+	if t > 0 && t < jsonInvalid {
+		*ts |= 1 << (t - 1)
+	}
 }
 
 const (
@@ -76,53 +96,53 @@ const (
 )
 
 // JsonTypeOf detects: nil, string, number, bool, object, array
-func JsonTypeOf(v any) JsonType {
+func JsonTypeOf(v any) JsumType {
 	switch v.(type) {
 	case nil:
-		return JsonType{t: jsonNull}
+		return JsumType{t: JsonNull}
 	case string:
-		return JsonType{t: jsonString, v: jsonStrString}
+		return JsumType{t: JsonString, v: jsonStrString}
 	case int:
-		return JsonType{t: jsonNumber, v: jsonNumInt}
+		return JsumType{t: JsonNumber, v: jsonNumInt}
 	case uint:
-		return JsonType{t: jsonNumber, v: jsonNumUint}
+		return JsumType{t: JsonNumber, v: jsonNumUint}
 	case int64:
-		return JsonType{t: jsonNumber, v: jsonNumInt64}
+		return JsumType{t: JsonNumber, v: jsonNumInt64}
 	case uint64:
-		return JsonType{t: jsonNumber, v: jsonNumUint64}
+		return JsumType{t: JsonNumber, v: jsonNumUint64}
 	case int32:
-		return JsonType{t: jsonNumber, v: jsonNumInt32}
+		return JsumType{t: JsonNumber, v: jsonNumInt32}
 	case uint32:
-		return JsonType{t: jsonNumber, v: jsonNumUint32}
+		return JsumType{t: JsonNumber, v: jsonNumUint32}
 	case int16:
-		return JsonType{t: jsonNumber, v: jsonNumInt16}
+		return JsumType{t: JsonNumber, v: jsonNumInt16}
 	case uint16:
-		return JsonType{t: jsonNumber, v: jsonNumUint16}
+		return JsumType{t: JsonNumber, v: jsonNumUint16}
 	case int8:
-		return JsonType{t: jsonNumber, v: jsonNumInt8}
+		return JsumType{t: JsonNumber, v: jsonNumInt8}
 	case uint8:
-		return JsonType{t: jsonNumber, v: jsonNumUint8}
+		return JsumType{t: JsonNumber, v: jsonNumUint8}
 	case float32:
-		return JsonType{t: jsonNumber, v: jsonNumFloat32}
+		return JsumType{t: JsonNumber, v: jsonNumFloat32}
 	case float64:
-		return JsonType{t: jsonNumber, v: jsonNumFloat64}
+		return JsumType{t: JsonNumber, v: jsonNumFloat64}
 	case bool:
-		return JsonType{t: jsonBoolean}
+		return JsumType{t: JsonBoolean}
 	case time.Time:
-		return JsonType{t: jsonString, v: jsonStrTime}
+		return JsumType{t: JsonString, v: jsonStrTime}
 	case map[string]any:
-		return JsonType{t: jsonObject, v: jsonObjStrAny}
+		return JsumType{t: JsonObject, v: jsonObjStrAny}
 	case []any:
-		return JsonType{t: jsonArray, v: jsonArrAny}
+		return JsumType{t: JsonArray, v: jsonArrAny}
 	}
 	rty := reflect.TypeOf(v)
 	switch rty.Kind() {
 	case reflect.Map:
-		return JsonType{t: jsonObject, v: jsonObjRMap}
+		return JsumType{t: JsonObject, v: jsonObjRMap}
 	case reflect.Slice:
-		return JsonType{t: jsonArray, v: jsonArrRSlice}
+		return JsumType{t: JsonArray, v: jsonArrRSlice}
 	}
-	return JsonType{}
+	return JsumType{}
 }
 
 type DedupHash map[uint64][]Deducer
@@ -138,9 +158,12 @@ func (dh DedupHash) ReusedTypes() (res []Deducer) {
 	return res
 }
 
+const UnknownAccept = -1
+
 type Deducer interface {
-	Accepts(jt JsonType) bool
-	Example(v any, jt JsonType) Deducer
+	JsonType() JsonType
+	Accepts(v any, jt JsumType) float64
+	Example(v any, jt JsumType, acpt float64) Deducer
 	Nulls() int
 	Hash(dh DedupHash) uint64
 	Copies() []Deducer
@@ -161,7 +184,7 @@ func (d *dedBase) Nulls() int { return d.Null }
 
 func (d *dedBase) Copies() []Deducer { return d.copies }
 
-func (d *dedBase) startHash(jt jsonType) *maphash.Hash {
+func (d *dedBase) startHash(jt JsonType) *maphash.Hash {
 	h := new(maphash.Hash)
 	h.SetSeed(hashSeed)
 	binary.Write(h, hashEndian, int32(jt))
@@ -179,7 +202,7 @@ func (lhs *dedBase) Equal(rhs *dedBase) bool {
 
 func Deduce(cfg *Config, v any) Deducer {
 	tmp := *NewUnknown(cfg)
-	return tmp.Example(v, JsonTypeOf(v))
+	return tmp.Example(v, JsonTypeOf(v), UnknownAccept)
 }
 
 var (

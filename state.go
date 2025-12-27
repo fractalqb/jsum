@@ -51,7 +51,7 @@ type StateIO struct {
 	strs map[string]int64
 	sids map[int64]string
 	wr   io.Writer
-	rd   reader
+	rd   restCountReader
 	cfg  *Config
 
 	StrCount, StrDup int
@@ -74,7 +74,7 @@ func (sio *StateIO) WriteState(w io.Writer, ded Deducer) (err error) {
 
 func (sio *StateIO) ReadState(r io.Reader, cfg *Config, size int64) (_ Deducer, err error) {
 	must.RecoverAs(&err, "read jsum state")
-	sio.rd = reader{bufio.NewReader(r), size}
+	sio.rd = restCountReader{bufio.NewReader(r), size}
 	sio.cfg = cfg
 	defer func() {
 		sio.rd.r = nil
@@ -376,18 +376,18 @@ func (sio *StateIO) rdString() string {
 
 var ndn = binary.BigEndian
 
-type reader struct {
+type restCountReader struct {
 	r    *bufio.Reader
 	rest int64
 }
 
-func (rc *reader) Read(p []byte) (n int, err error) {
+func (rc *restCountReader) Read(p []byte) (n int, err error) {
 	n, err = rc.r.Read(p)
 	rc.rest -= int64(n)
 	return
 }
 
-func (rc *reader) ReadByte() (b byte, err error) {
+func (rc *restCountReader) ReadByte() (b byte, err error) {
 	b, err = rc.r.ReadByte()
 	if err == nil {
 		rc.rest--
@@ -395,7 +395,7 @@ func (rc *reader) ReadByte() (b byte, err error) {
 	return
 }
 
-func (rc *reader) ReadString(delim byte) (s string, err error) {
+func (rc *restCountReader) ReadString(delim byte) (s string, err error) {
 	s, err = rc.r.ReadString(delim)
 	rc.rest -= int64(len(s))
 	return
@@ -407,7 +407,7 @@ const (
 	statMinVarSz  = 3
 )
 
-func (rc *reader) checkU(s uint64, f string, a ...any) {
+func (rc *restCountReader) checkU(s uint64, f string, a ...any) {
 	if s > math.MaxInt64 {
 		panic(fmt.Errorf(
 			"size %d exceeds int64 range \\"+f,
@@ -417,7 +417,12 @@ func (rc *reader) checkU(s uint64, f string, a ...any) {
 	rc.checkI(int64(s), f, a...)
 }
 
-func (rc *reader) checkI(s int64, f string, a ...any) {
+// checkI verifies that s bytes are available according to the reader's
+// remaining count. If the remaining count is initialized with negative value
+// the remaining size is considered unbounded and the check is skipped. If s
+// is larger than the available rc.rest, checkI panics with a formatted error
+// message.
+func (rc *restCountReader) checkI(s int64, f string, a ...any) {
 	if rc.rest < 0 {
 		return
 	}

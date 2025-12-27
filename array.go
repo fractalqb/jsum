@@ -39,10 +39,17 @@ func newArrJson(cfg *Config, count, nulln int) *Array {
 	return res
 }
 
-func (a *Array) Accepts(jt JsonType) bool { return jt.t == jsonArray }
+func (*Array) JsonType() JsonType { return JsonArray }
 
-func (a *Array) Example(v any, jt JsonType) Deducer {
-	if jt.t == jsonNull {
+func (a *Array) Accepts(_ any, jt JsumType) float64 {
+	if jt.t == JsonArray {
+		return 1
+	}
+	return 0
+}
+
+func (a *Array) Example(v any, jt JsumType, _ float64) Deducer {
+	if jt.t == JsonNull {
 		a.Count++
 		a.Null++
 		return a
@@ -60,7 +67,7 @@ func (a *Array) Example(v any, jt JsonType) Deducer {
 			a.MaxLen = max(a.MaxLen, l)
 		}
 		for _, e := range v {
-			a.Elem = a.Elem.Example(e, JsonTypeOf(e))
+			a.Elem = a.Elem.Example(e, JsonTypeOf(e), UnknownAccept)
 		}
 		return a
 		// TODO case jsonArrRSlice:
@@ -69,7 +76,7 @@ func (a *Array) Example(v any, jt JsonType) Deducer {
 }
 
 func (a *Array) Hash(dh DedupHash) uint64 {
-	hash := a.dedBase.startHash(jsonArray)
+	hash := a.dedBase.startHash(JsonArray)
 	if a.MaxLen == 0 {
 		hash.WriteByte(0)
 	} else {

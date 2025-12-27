@@ -24,9 +24,11 @@ type Invalid struct {
 
 func newInvalid(err error) Invalid { return Invalid{err} }
 
-func (Invalid) Accepts(JsonType) bool { return false }
+func (Invalid) JsonType() JsonType { return jsonInvalid }
 
-func (i Invalid) Example(any, JsonType) Deducer { return i }
+func (Invalid) Accepts(any, JsumType) float64 { return 0 }
+
+func (i Invalid) Example(any, JsumType, float64) Deducer { return i }
 
 func (Invalid) Nulls() int { return -1 }
 
