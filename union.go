@@ -63,7 +63,7 @@ func (u *Union) Example(v any, jt JsumType, _ float64) Deducer {
 			avar, amax = i, da
 		}
 	}
-	if amax > u.cfg.Union.VariantRejectMax {
+	if amax > u.cfg.Union.MergeRejectMax {
 		u.Variants[avar] = u.Variants[avar].Example(v, jt, amax)
 		return u
 	}

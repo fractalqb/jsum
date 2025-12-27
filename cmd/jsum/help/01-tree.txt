@@ -1,0 +1,13 @@
+BROWSING THE SUMMARY
+j, 🠋, 🠊          : Move down by one node
+k, 🠉, 🠈          : Move up by one node
+g, home          : Move to the top
+G, end           : Move to the bottom
+J                : Move down one level
+K, S-🠈           : Move up one level
+Ctrk-F, page down: Move down by one page
+Ctrl-B, page up  : Move up by one page
+Space, Enter     : Toggle node folding
+m / M            : Fold siblings / subtree
+r / R            : Unfold siblings / subtree
+s                : Search nodes

@@ -1,0 +1,7 @@
+NODE SEARCH
+After starting the node search, enter your search term
+at the bottom of the screen. This will populate the list
+of matching terms on the right. Press 'Enter' to select
+that list and browse the matching nodes. Pressing ESC
+will take you back to the search term edit screen.
+Pressing ESC again will end the node search.

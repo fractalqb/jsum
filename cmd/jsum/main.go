@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -39,7 +40,8 @@ import (
 var (
 	cfg = jsum.Config{
 		Union: jsum.UnionConfig{
-			Combine: []jsum.TypeSet{jsum.AllTypes},
+			MergeRejectMax: math.SmallestNonzeroFloat64,
+			Combine:        []jsum.TypeSet{jsum.AllTypes},
 			// Combine: []jsum.TypeSet{
 			// 	jsum.NewTypeSet(jsum.JsonString, jsum.JsonNumber, jsum.JsonBoolean),
 			// 	jsum.NewTypeSet(jsum.JsonObject),
@@ -62,8 +64,9 @@ var (
 )
 
 const (
-	envJsumTree    = "JSUM_TREE"
-	envJsumStrings = "JSUM_STRINGS"
+	envJsumTree       = "JSUM_TREE"
+	envJsumStrings    = "JSUM_STRINGS"
+	envJsumUnionMerge = "JSUM_UNION_MERGE"
 )
 
 func init() {
@@ -73,6 +76,11 @@ func init() {
 	if v, ok := os.LookupEnv(envJsumStrings); ok {
 		if n, err := strconv.Atoi(v); err == nil {
 			fStrMax = n
+		}
+	}
+	if v, ok := os.LookupEnv(envJsumUnionMerge); ok {
+		if x, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.Union.MergeRejectMax = x
 		}
 	}
 }
@@ -93,9 +101,9 @@ FLAGS:`)
 func main() {
 	flag.Usage = usage
 	flag.StringVar(&fTreeStyle, "tree", fTreeStyle,
-		"Select style for tree printing from: ascii, draw, items; Env: "+envJsumTree+"\n")
+		"Select style for tree printing from: ascii, draw, items (env: "+envJsumTree+")\n")
 	flag.IntVar(&fStrMax, "strings", fStrMax,
-		"Max number of strings values to print per property; Env: "+envJsumStrings+"\n")
+		"Max number of strings values to print per property (env: "+envJsumStrings+")\n")
 	flag.BoolVar(&fTypes, "types", fTypes,
 		"Find reused types (experimental)")
 	flag.StringVar(&fArgs, "a", fArgs,
@@ -108,6 +116,9 @@ func main() {
 		`Keep deduced schema in state file.
 This can be used for incremental refinement or simply to browse without
 analysing the examples again.`)
+	flag.Float64Var(&cfg.Union.MergeRejectMax, "union-merge", cfg.Union.MergeRejectMax,
+		`Maximum acceptance value that is rejected for merging into an existing
+union variant. (env: `+envJsumUnionMerge+")\n")
 	flag.Parse()
 
 	var (

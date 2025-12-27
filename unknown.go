@@ -46,10 +46,9 @@ func (a *Unknown) Example(v any, jt JsumType, _ float64) Deducer {
 		b := newBool(a.cfg, a.Count, a.Null)
 		return b.Example(v, jt, UnknownAccept)
 	case JsonObject:
-		switch v := v.(type) {
-		case map[string]any:
-			ded := newObjJson(a.cfg, a.Count, a.Null)
-			return ded.Example(v, jt, UnknownAccept)
+		switch jt.v {
+		case jsonObjStrAny:
+			return newObjJson(a.cfg, a.Count, a.Null, objStrAnySeq(v))
 		}
 	case JsonArray:
 		switch v := v.(type) {

@@ -20,6 +20,8 @@ package jsum
 
 import (
 	"encoding/binary"
+	"iter"
+	"math"
 	"slices"
 	"sort"
 )
@@ -34,24 +36,30 @@ type Member struct {
 	Ded       Deducer `json:"type"`
 }
 
-func newObjJson(cfg *Config, count, nulln int) *Object {
+func newObjJson(cfg *Config, count, nulln int, m iter.Seq2[string, any]) *Object {
 	res := &Object{
 		dedBase: dedBase{cfg: cfg, Count: count, Null: nulln},
 		Members: make(map[string]Member),
 	}
+	if m != nil {
+		res.Count++
+	}
+	res.mergeMap(m)
 	return res
 }
 
 func (*Object) JsonType() JsonType { return JsonObject }
 
-func (o *Object) Accepts(_ any, jt JsumType) float64 {
-	if jt.t != JsonObject {
-		return 0
+func (o *Object) Accepts(v any, jt JsumType) float64 {
+	switch jt.v {
+	case jsonObjStrAny:
+		acpt := o.acceptance(objStrAnySeq(v))
+		return max(math.SmallestNonzeroFloat64, acpt)
 	}
-	return 1
+	return 0
 }
 
-func (o *Object) Example(v any, jt JsumType, _ float64) Deducer {
+func (o *Object) Example(v any, jt JsumType, acpt float64) Deducer {
 	if jt.t == JsonNull {
 		o.Count++
 		o.Null++
@@ -59,15 +67,39 @@ func (o *Object) Example(v any, jt JsumType, _ float64) Deducer {
 	}
 	switch jt.v {
 	case jsonObjStrAny:
-		o.Count++
-		o.mergeMap(v.(map[string]any))
-		return o
+		if acpt < 0 {
+			acpt = o.acceptance(objStrAnySeq(v))
+		}
+		if o.cfg.Union.MergeRejectMax == 0 || acpt > o.cfg.Union.MergeRejectMax {
+			o.Count++
+			o.mergeMap(objStrAnySeq(v))
+			return o
+		}
+		u := newUnion(o)
+		return u.Example(v, jt, UnknownAccept)
 		// TODO case jsonObjRMap:
 	}
 	return newAny(o.cfg, o.Count+1, o.Null) // TODO Why not union?
 }
 
-func (o *Object) mergeMap(m map[string]any) {
+func (o *Object) acceptance(m iter.Seq2[string, any]) float64 {
+	common, vmiss := 0, 0
+	for n, v := range m {
+		vjt := JsonTypeOf(v)
+		if m, ok := o.Members[n]; ok && m.Ded.JsonType() == vjt.JsonType() {
+			common++
+		} else {
+			vmiss++
+		}
+	}
+	total := len(o.Members) + vmiss
+	if total == 0 {
+		return 1
+	}
+	return float64(common) / float64(total)
+}
+
+func (o *Object) mergeMap(m iter.Seq2[string, any]) {
 	for k, v := range m {
 		if m, ok := o.Members[k]; ok {
 			o.Members[k] = Member{
@@ -136,3 +168,14 @@ func (o *Object) JSONSchema() any {
 }
 
 func (o *Object) super() *dedBase { return &o.dedBase }
+
+func objStrAnySeq(v any) iter.Seq2[string, any] {
+	return func(yield func(string, any) bool) {
+		m := v.(map[string]any)
+		for n, v := range m {
+			if !yield(n, v) {
+				return
+			}
+		}
+	}
+}
