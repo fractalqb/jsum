@@ -1,3 +1,5 @@
+This project has been migrated to [Codeberg](https://codeberg.org/fractalqb/jsum).
+
 # JSON Summary
 
 A tool to analyse the structure of JSON from a set of example JSON values.
